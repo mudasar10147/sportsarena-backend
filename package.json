@@ -1,0 +1,35 @@
+{
+  "name": "sportsarena-backend",
+  "version": "1.0.0",
+  "description": "SportsArena - Smart Sports Facility Booking Marketplace Backend",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "migrate": "node src/db/runMigrations.js",
+    "db:reset": "node src/db/resetDatabase.js",
+    "create:admin": "node src/scripts/createPlatformAdmin.js"
+  },
+  "keywords": [
+    "sports",
+    "booking",
+    "marketplace"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.953.0",
+    "@aws-sdk/s3-request-presigner": "^3.953.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.2.1",
+    "google-auth-library": "^9.15.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

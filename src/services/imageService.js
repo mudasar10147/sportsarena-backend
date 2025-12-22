@@ -1,0 +1,383 @@
+/**
+ * Image Service
+ * 
+ * Business logic for image management.
+ * Handles validation, role-based access control, and image limits.
+ * 
+ * NOTE: This service currently handles image metadata only.
+ * Actual file uploads and S3 integration will be added later.
+ * 
+ * Image Limits (per entity):
+ * - User profile: 1 image
+ * - User gallery: 10 max
+ * - Facility profile: 1 image
+ * - Facility cover: 1 image
+ * - Facility gallery: 20 max
+ * - Court main: 1 image
+ * - Court gallery: 10 max
+ * - Sport icon: 1 image
+ * - Sport banner: 1 image
+ * - Review images: 5 max per review
+ * 
+ * Limits are enforced at image creation time to prevent abuse.
+ */
+
+const Image = require('../models/Image');
+const User = require('../models/User');
+const Facility = require('../models/Facility');
+const Court = require('../models/Court');
+const Sport = require('../models/Sport');
+const { deleteImageFromS3 } = require('./s3Service');
+
+// Image limits configuration
+const IMAGE_LIMITS = {
+  user: {
+    profile: 1,
+    gallery: 10
+  },
+  facility: {
+    profile: 1,
+    cover: 1,
+    gallery: 20
+  },
+  court: {
+    main: 1,
+    gallery: 10
+  },
+  sport: {
+    icon: 1,
+    banner: 1
+  },
+  review: {
+    gallery: 5
+  }
+};
+
+// Single-image types (must be primary and only one allowed)
+const SINGLE_IMAGE_TYPES = ['profile', 'cover', 'icon', 'banner', 'main'];
+
+/**
+ * Validate image creation request
+ * Note: For single-image types, existing images will be automatically replaced
+ * @param {Object} imageData - Image data
+ * @param {number} userId - User ID making the request
+ * @param {string} userRole - User role
+ * @returns {Promise<Object|null>} Existing image to replace (if any), or null
+ * @throws {Error} If validation fails
+ */
+const validateImageCreation = async (imageData, userId, userRole) => {
+  const { entityType, entityId, imageType } = imageData;
+
+  // Validate entity exists and user has permission
+  await validateEntityAccess(entityType, entityId, userId, userRole);
+
+  // Check image limits (for gallery types, not single-image types)
+  // Single-image types are handled by replacement logic
+  if (!SINGLE_IMAGE_TYPES.includes(imageType)) {
+    await checkImageLimits(entityType, entityId, imageType);
+  }
+
+  // For single-image types, return existing image for replacement
+  // Don't throw error - we'll replace it automatically
+  if (SINGLE_IMAGE_TYPES.includes(imageType)) {
+    const existing = await Image.getPrimaryImage(entityType, entityId, imageType);
+    return existing; // Return existing image or null
+  }
+
+  return null; // No existing image to replace
+};
+
+/**
+ * Validate entity access (ownership/permissions)
+ * @param {string} entityType - Entity type
+ * @param {number} entityId - Entity ID
+ * @param {number} userId - User ID
+ * @param {string} userRole - User role
+ * @returns {Promise<void>}
+ * @throws {Error} If user doesn't have access
+ */
+const validateEntityAccess = async (entityType, entityId, userId, userRole) => {
+  switch (entityType) {
+    case 'user':
+      // Users can only upload images for themselves
+      if (parseInt(entityId, 10) !== userId) {
+        const error = new Error('You can only upload images for your own profile');
+        error.statusCode = 403;
+        error.errorCode = 'FORBIDDEN';
+        throw error;
+      }
+      // Verify user exists
+      const user = await User.findById(entityId);
+      if (!user) {
+        const error = new Error('User not found');
+        error.statusCode = 404;
+        error.errorCode = 'USER_NOT_FOUND';
+        throw error;
+      }
+      break;
+
+    case 'facility':
+      // Only facility owners can upload facility images
+      if (userRole !== 'facility_admin' && userRole !== 'platform_admin') {
+        const error = new Error('Only facility owners can upload facility images');
+        error.statusCode = 403;
+        error.errorCode = 'FORBIDDEN';
+        throw error;
+      }
+      // Verify facility exists and user is owner
+      const facility = await Facility.findById(entityId);
+      if (!facility) {
+        const error = new Error('Facility not found');
+        error.statusCode = 404;
+        error.errorCode = 'FACILITY_NOT_FOUND';
+        throw error;
+      }
+      if (facility.ownerId !== userId && userRole !== 'platform_admin') {
+        const error = new Error('You can only upload images for facilities you own');
+        error.statusCode = 403;
+        error.errorCode = 'FORBIDDEN';
+        throw error;
+      }
+      break;
+
+    case 'court':
+      // Only facility owners can upload court images
+      if (userRole !== 'facility_admin' && userRole !== 'platform_admin') {
+        const error = new Error('Only facility owners can upload court images');
+        error.statusCode = 403;
+        error.errorCode = 'FORBIDDEN';
+        throw error;
+      }
+      // Verify court exists and user owns the facility
+      const court = await Court.findById(entityId);
+      if (!court) {
+        const error = new Error('Court not found');
+        error.statusCode = 404;
+        error.errorCode = 'COURT_NOT_FOUND';
+        throw error;
+      }
+      const courtFacility = await Facility.findById(court.facilityId);
+      if (!courtFacility) {
+        const error = new Error('Facility not found');
+        error.statusCode = 404;
+        error.errorCode = 'FACILITY_NOT_FOUND';
+        throw error;
+      }
+      if (courtFacility.ownerId !== userId && userRole !== 'platform_admin') {
+        const error = new Error('You can only upload images for courts in facilities you own');
+        error.statusCode = 403;
+        error.errorCode = 'FORBIDDEN';
+        throw error;
+      }
+      break;
+
+    case 'sport':
+      // Only platform admins can upload sport images
+      if (userRole !== 'platform_admin') {
+        const error = new Error('Only platform admins can upload sport images');
+        error.statusCode = 403;
+        error.errorCode = 'FORBIDDEN';
+        throw error;
+      }
+      // Verify sport exists
+      const sport = await Sport.findById(entityId);
+      if (!sport) {
+        const error = new Error('Sport not found');
+        error.statusCode = 404;
+        error.errorCode = 'SPORT_NOT_FOUND';
+        throw error;
+      }
+      break;
+
+    case 'review':
+      // Users can upload review images (ownership validated in review system)
+      // For now, allow any authenticated user
+      break;
+
+    default:
+      const error = new Error(`Invalid entity type: ${entityType}`);
+      error.statusCode = 400;
+      error.errorCode = 'VALIDATION_ERROR';
+      throw error;
+  }
+};
+
+/**
+ * Check if image limit is reached for an entity
+ * Enforces upload limits to prevent abuse
+ * 
+ * @param {string} entityType - Entity type
+ * @param {number} entityId - Entity ID
+ * @param {string} imageType - Image type
+ * @returns {Promise<void>}
+ * @throws {Error} If limit is reached
+ */
+const checkImageLimits = async (entityType, entityId, imageType) => {
+  const limits = IMAGE_LIMITS[entityType];
+  if (!limits || !limits[imageType]) {
+    // No limit defined, allow unlimited
+    return;
+  }
+
+  const limit = limits[imageType];
+  
+  // Count only active images (is_active = true)
+  // This ensures deleted images don't count toward the limit
+  const currentCount = await Image.countByEntity(entityType, entityId, imageType, true);
+
+  if (currentCount >= limit) {
+    // Build user-friendly error message
+    const entityDisplayName = entityType.charAt(0).toUpperCase() + entityType.slice(1);
+    const imageTypeDisplayName = imageType.charAt(0).toUpperCase() + imageType.slice(1);
+    
+    const error = new Error(
+      `Image limit reached. Maximum ${limit} ${imageTypeDisplayName} image${limit > 1 ? 's' : ''} allowed per ${entityDisplayName}. ` +
+      `Please delete an existing ${imageType} image before uploading a new one.`
+    );
+    error.statusCode = 400;
+    error.errorCode = 'IMAGE_LIMIT_REACHED';
+    error.details = {
+      entityType,
+      entityId,
+      imageType,
+      limit,
+      currentCount
+    };
+    throw error;
+  }
+};
+
+/**
+ * Create image record
+ * Automatically replaces existing single-image types (profile, cover, icon, banner, main)
+ * @param {Object} imageData - Image data
+ * @param {number} userId - User ID creating the image
+ * @param {string} userRole - User role
+ * @returns {Promise<Object>} Created image object
+ * @throws {Error} If validation fails
+ */
+const createImage = async (imageData, userId, userRole) => {
+  const { entityType, entityId, imageType } = imageData;
+
+  // Validate request and get existing image (if any) for single-image types
+  const existingImage = await validateImageCreation(imageData, userId, userRole);
+
+  // If this is a single-image type and one already exists, replace it
+  if (existingImage && SINGLE_IMAGE_TYPES.includes(imageType)) {
+    // Soft-delete the old image record
+    await Image.delete(existingImage.id);
+
+    // Delete the old file from S3 (non-blocking - won't fail if S3 delete fails)
+    if (existingImage.storageKey) {
+      await deleteImageFromS3(existingImage.storageKey);
+    }
+
+    console.log(`[Image Replacement] Replaced ${imageType} image for ${entityType} ${entityId}. Old image ID: ${existingImage.id}`);
+  }
+
+  // Set isPrimary for single-image types
+  const isPrimary = SINGLE_IMAGE_TYPES.includes(imageType);
+
+  // Create new image record
+  const image = await Image.create({
+    ...imageData,
+    createdBy: userId,
+    isPrimary
+  });
+
+  return image;
+};
+
+/**
+ * Get images for an entity
+ * @param {string} entityType - Entity type
+ * @param {number} entityId - Entity ID
+ * @param {Object} [options={}] - Query options
+ * @param {string} [options.imageType] - Filter by image type
+ * @returns {Promise<Array>} Array of image objects
+ */
+const getEntityImages = async (entityType, entityId, options = {}) => {
+  return Image.findByEntity(entityType, entityId, options);
+};
+
+/**
+ * Get image by ID
+ * @param {string} imageId - Image UUID
+ * @returns {Promise<Object>} Image object
+ * @throws {Error} If image not found
+ */
+const getImageById = async (imageId) => {
+  const image = await Image.findById(imageId);
+  if (!image) {
+    const error = new Error('Image not found');
+    error.statusCode = 404;
+    error.errorCode = 'IMAGE_NOT_FOUND';
+    throw error;
+  }
+  return image;
+};
+
+/**
+ * Update image
+ * @param {string} imageId - Image UUID
+ * @param {Object} updateData - Fields to update
+ * @param {number} userId - User ID making the request
+ * @param {string} userRole - User role
+ * @returns {Promise<Object>} Updated image object
+ * @throws {Error} If validation fails
+ */
+const updateImage = async (imageId, updateData, userId, userRole) => {
+  // Get existing image
+  const image = await getImageById(imageId);
+
+  // Validate access
+  await validateEntityAccess(image.entityType, image.entityId, userId, userRole);
+
+  // Update image
+  const updatedImage = await Image.update(imageId, updateData);
+
+  return updatedImage;
+};
+
+/**
+ * Delete image (soft delete)
+ * @param {string} imageId - Image UUID
+ * @param {number} userId - User ID making the request
+ * @param {string} userRole - User role
+ * @returns {Promise<Object>} Deleted image object
+ * @throws {Error} If validation fails
+ */
+const deleteImage = async (imageId, userId, userRole) => {
+  // Get existing image
+  const image = await getImageById(imageId);
+
+  // Validate access
+  await validateEntityAccess(image.entityType, image.entityId, userId, userRole);
+
+  // Soft delete
+  const deletedImage = await Image.delete(imageId);
+
+  return deletedImage;
+};
+
+/**
+ * Get image limits for an entity type
+ * @param {string} entityType - Entity type
+ * @returns {Object} Image limits object
+ */
+const getImageLimits = (entityType) => {
+  return IMAGE_LIMITS[entityType] || {};
+};
+
+module.exports = {
+  createImage,
+  getEntityImages,
+  getImageById,
+  updateImage,
+  deleteImage,
+  getImageLimits,
+  validateEntityAccess, // Exported for use in controllers
+  IMAGE_LIMITS,
+  SINGLE_IMAGE_TYPES
+};
+

@@ -4,7 +4,7 @@
   "description": "SportsArena - Smart Sports Facility Booking Marketplace Backend",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node src/start.js",
     "dev": "nodemon src/server.js",
     "migrate": "node src/db/runMigrations.js",
     "db:reset": "node src/db/resetDatabase.js",

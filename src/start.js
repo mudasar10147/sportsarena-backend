@@ -1,17 +1,21 @@
 /**
- * Database Migration Runner
+ * Application Startup Script
  * 
- * Runs all migration files in order to set up the database schema
+ * Runs database migrations before starting the server.
+ * Used for production deployments (Railway, Heroku, etc.)
+ * 
+ * This ensures the database schema is always up-to-date before
+ * the server starts accepting requests.
  */
 
 require('dotenv').config();
+const { pool } = require('./config/database');
 const fs = require('fs');
 const path = require('path');
-const { pool } = require('../config/database');
 
-const migrationsDir = path.join(__dirname, 'migrations');
+const migrationsDir = path.join(__dirname, 'db', 'migrations');
 
-// Migration files in order
+// Migration files in order (must match runMigrations.js)
 const migrationFiles = [
   '001_create_users_table.sql',
   '002_create_facilities_table.sql',
@@ -29,6 +33,10 @@ const migrationFiles = [
   '015_add_google_auth_support.sql'
 ];
 
+/**
+ * Run database migrations
+ * Idempotent - skips already executed migrations
+ */
 async function runMigrations() {
   const client = await pool.connect();
   
@@ -43,6 +51,8 @@ async function runMigrations() {
         executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    let migrationsRun = 0;
 
     for (const filename of migrationFiles) {
       const filePath = path.join(migrationsDir, filename);
@@ -77,31 +87,44 @@ async function runMigrations() {
         );
         await client.query('COMMIT');
         console.log(`✅ Successfully executed ${filename}\n`);
+        migrationsRun++;
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
       }
     }
 
-    console.log('✨ All migrations completed successfully!');
+    if (migrationsRun === 0) {
+      console.log('✨ Database is up-to-date (no new migrations)\n');
+    } else {
+      console.log(`✨ ${migrationsRun} migration(s) completed successfully!\n`);
+    }
   } catch (error) {
     console.error('❌ Migration failed:', error.message);
     console.error(error);
-    process.exit(1);
+    throw error;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-// Run migrations
-runMigrations()
-  .then(() => {
-    console.log('\n🎉 Database setup complete!');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('\n💥 Database setup failed:', error);
+/**
+ * Start the application
+ */
+async function start() {
+  try {
+    // Run migrations first
+    await runMigrations();
+    
+    // Then start the server
+    console.log('🚀 Starting server...\n');
+    require('./server');
+  } catch (error) {
+    console.error('💥 Startup failed:', error);
     process.exit(1);
-  });
+  }
+}
+
+// Start the application
+start();
 

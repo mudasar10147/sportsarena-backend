@@ -11,6 +11,10 @@ const { pool } = require('./config/database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy (needed for Railway, Heroku, etc. to get correct client IP)
+// This ensures req.ip is set correctly from X-Forwarded-For header
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json());

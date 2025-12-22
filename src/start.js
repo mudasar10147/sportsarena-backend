@@ -9,7 +9,7 @@
  */
 
 require('dotenv').config();
-const { pool } = require('./config/database');
+const { pool, testConnection } = require('./config/database');
 const fs = require('fs');
 const path = require('path');
 
@@ -113,14 +113,28 @@ async function runMigrations() {
  */
 async function start() {
   try {
-    // Run migrations first
+    // Test database connection first
+    console.log('🔍 Testing database connection...');
+    const connected = await testConnection();
+    if (!connected) {
+      throw new Error('Database connection test failed. Cannot proceed with migrations.');
+    }
+    console.log('✅ Database connection test passed\n');
+    
+    // Run migrations
     await runMigrations();
     
     // Then start the server
     console.log('🚀 Starting server...\n');
     require('./server');
   } catch (error) {
-    console.error('💥 Startup failed:', error);
+    console.error('💥 Startup failed:', error.message);
+    if (error.code === 'ECONNREFUSED') {
+      console.error('\n💡 Troubleshooting:');
+      console.error('   - For Railway: Ensure PostgreSQL service is added and DATABASE_URL is set');
+      console.error('   - For local: Ensure PostgreSQL is running and DB_* variables are set');
+      console.error('   - Check Railway logs for DATABASE_URL value');
+    }
     process.exit(1);
   }
 }

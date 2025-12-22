@@ -24,14 +24,9 @@ const authRateLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
-  // Use IP address for rate limiting
-  keyGenerator: (req) => {
-    // Try to get real IP from proxy headers
-    return req.ip || 
-           req.connection.remoteAddress || 
-           req.socket.remoteAddress ||
-           'unknown';
-  },
+  // Use default IP detection (handles IPv4 and IPv6 correctly)
+  // Express automatically sets req.ip from X-Forwarded-For header
+  // No custom keyGenerator needed - default handles it properly
   // Skip rate limiting for successful authentications (optional optimization)
   skipSuccessfulRequests: false,
   // Skip rate limiting for failed requests (we want to limit failures)

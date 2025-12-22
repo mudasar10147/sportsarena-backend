@@ -29,6 +29,8 @@ cp .env.example .env
 ```
 
 3. Update `.env` with your PostgreSQL credentials:
+
+**Option 1: Individual variables (for local development):**
 ```
 DB_HOST=localhost
 DB_PORT=5432
@@ -36,6 +38,13 @@ DB_NAME=sportsarena
 DB_USER=postgres
 DB_PASSWORD=your_password_here
 ```
+
+**Option 2: DATABASE_URL (for Railway, Heroku, Render, etc.):**
+```
+DATABASE_URL=postgresql://user:password@host:port/database
+```
+
+**Note:** The app automatically uses `DATABASE_URL` if provided, otherwise falls back to individual variables. For production platforms like Railway, `DATABASE_URL` is automatically set.
 
 4. Create the PostgreSQL database:
 ```bash

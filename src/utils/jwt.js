@@ -134,7 +134,7 @@ const verifyToken = (token) => {
     return verifyAuthToken(token);
   } catch (error) {
     // Fall back to old verification (no issuer/audience check)
-    return jwt.verify(token, JWT_SECRET);
+  return jwt.verify(token, JWT_SECRET);
   }
 };
 

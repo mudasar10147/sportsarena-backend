@@ -8,6 +8,7 @@
  * 
  * Endpoints:
  * - POST   /images                    - Create image record (register intent to upload)
+ * - PUT    /images/profile/user/:userId - Replace user profile image (convenience endpoint)
  * - GET    /images/:entityType/:entityId - Get images for an entity
  * - GET    /images/id/:imageId         - Get image by ID
  * - PUT    /images/id/:imageId         - Update image metadata
@@ -32,6 +33,8 @@ const { requirePlatformAdmin } = require('../../middleware/authorization');
 // Specific routes must come before parameterized routes to avoid conflicts
 router.post('/', authenticate, imageController.createImage);
 router.get('/limits/:entityType', authenticate, imageController.getImageLimits);
+// Profile image replacement route (must come before :entityType/:entityId to avoid conflicts)
+router.put('/profile/user/:userId', authenticate, imageController.replaceProfileImage);
 router.get('/:entityType/:entityId', authenticate, imageController.getEntityImages);
 // :imageId routes (must come after :entityType/:entityId to avoid conflicts)
 router.get('/id/:imageId', authenticate, imageController.getImageById);

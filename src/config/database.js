@@ -42,11 +42,11 @@ if (databaseUrl) {
 } else {
   // Fall back to individual environment variables (local development)
   poolConfig = {
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'sportsarena',
-    password: process.env.DB_PASSWORD || '',
-    port: process.env.DB_PORT || 5432,
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME || 'sportsarena',
+  password: process.env.DB_PASSWORD || '',
+  port: process.env.DB_PORT || 5432,
   };
   
   console.log('📦 Using individual DB variables for database connection');

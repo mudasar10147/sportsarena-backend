@@ -355,6 +355,72 @@ const confirmUpload = async (req, res, next) => {
   }
 };
 
+/**
+ * Replace user profile image
+ * PUT /api/v1/images/profile/user/:userId
+ * 
+ * Replaces existing profile image for a user.
+ * This endpoint:
+ * 1. Finds and deletes existing profile image (if any)
+ * 2. Creates a new image record ready for upload
+ * 3. Returns the new imageId for the upload flow
+ * 
+ * This is a convenience endpoint that combines delete + create into a single operation.
+ * After calling this endpoint, follow the standard upload flow:
+ * - POST /api/v1/images/id/:imageId/presign (get pre-signed URL)
+ * - PUT <pre-signed-url> (upload to S3)
+ * - POST /api/v1/images/id/:imageId/confirm-upload (confirm upload)
+ * 
+ * Request Body (optional):
+ * {
+ *   "displayOrder": 0,
+ *   "metadata": {}
+ * }
+ * 
+ * Response:
+ * {
+ *   "success": true,
+ *   "message": "Profile image replacement initiated. Ready for upload.",
+ *   "data": {
+ *     "id": "550e8400-e29b-41d4-a716-446655440000",
+ *     "entityType": "user",
+ *     "entityId": 1,
+ *     "imageType": "profile",
+ *     "uploadStatus": "pending",
+ *     ...
+ *   }
+ * }
+ */
+const replaceProfileImage = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const requestingUserId = req.userId;
+    const userRole = req.user.role;
+    const { displayOrder, metadata } = req.body;
+
+    // Validation
+    const parsedUserId = parseInt(userId, 10);
+    if (isNaN(parsedUserId)) {
+      return sendValidationError(res, 'Invalid userId. Must be a number.');
+    }
+
+    // Replace profile image (validates ownership and creates new record)
+    const newImage = await imageService.replaceProfileImage(
+      parsedUserId,
+      requestingUserId,
+      userRole,
+      {
+        displayOrder,
+        metadata
+      }
+    );
+
+    return sendCreated(res, newImage, 'Profile image replacement initiated. Ready for upload.');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createImage,
   getEntityImages,
@@ -363,6 +429,7 @@ module.exports = {
   deleteImage,
   getImageLimits,
   generatePresignedUrl,
-  confirmUpload
+  confirmUpload,
+  replaceProfileImage
 };
 

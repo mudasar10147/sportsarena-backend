@@ -268,8 +268,8 @@ const createImage = async (imageData, userId, userRole) => {
     await Image.delete(existingImage.id);
 
     // Delete the old file from S3 (non-blocking - won't fail if S3 delete fails)
-    if (existingImage.storageKey) {
-      await deleteImageFromS3(existingImage.storageKey);
+    if (existingImage.s3Key) {
+      await deleteImageFromS3(existingImage.s3Key);
     }
 
     console.log(`[Image Replacement] Replaced ${imageType} image for ${entityType} ${entityId}. Old image ID: ${existingImage.id}`);
@@ -369,6 +369,66 @@ const getImageLimits = (entityType) => {
   return IMAGE_LIMITS[entityType] || {};
 };
 
+/**
+ * Replace profile image for a user
+ * This is a convenience function that finds and deletes existing profile image,
+ * then creates a new image record ready for upload.
+ * 
+ * @param {number} userId - User ID whose profile image to replace
+ * @param {number} requestingUserId - User ID making the request
+ * @param {string} userRole - User role
+ * @param {Object} [imageData={}] - Additional image data (displayOrder, metadata)
+ * @returns {Promise<Object>} New image record ready for upload
+ * @throws {Error} If validation fails
+ */
+const replaceProfileImage = async (userId, requestingUserId, userRole, imageData = {}) => {
+  // Validate that user can only replace their own profile image
+  if (parseInt(userId, 10) !== requestingUserId) {
+    const error = new Error('You can only replace your own profile image');
+    error.statusCode = 403;
+    error.errorCode = 'FORBIDDEN';
+    throw error;
+  }
+
+  // Verify user exists
+  const user = await User.findById(userId);
+  if (!user) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    error.errorCode = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  // Find existing profile image
+  const existingImage = await Image.getPrimaryImage('user', userId, 'profile');
+
+  // If existing image found, delete it (soft delete + S3 cleanup)
+  if (existingImage) {
+    // Soft-delete the old image record
+    await Image.delete(existingImage.id);
+
+    // Delete the old file from S3 (non-blocking - won't fail if S3 delete fails)
+    if (existingImage.s3Key) {
+      await deleteImageFromS3(existingImage.s3Key);
+    }
+
+    console.log(`[Profile Image Replacement] Replaced profile image for user ${userId}. Old image ID: ${existingImage.id}`);
+  }
+
+  // Create new image record
+  const newImage = await Image.create({
+    entityType: 'user',
+    entityId: userId,
+    imageType: 'profile',
+    createdBy: requestingUserId,
+    isPrimary: true,
+    displayOrder: imageData.displayOrder || 0,
+    metadata: imageData.metadata || {}
+  });
+
+  return newImage;
+};
+
 module.exports = {
   createImage,
   getEntityImages,
@@ -376,6 +436,7 @@ module.exports = {
   updateImage,
   deleteImage,
   getImageLimits,
+  replaceProfileImage,
   validateEntityAccess, // Exported for use in controllers
   IMAGE_LIMITS,
   SINGLE_IMAGE_TYPES

@@ -264,8 +264,13 @@ const createImage = async (imageData, userId, userRole) => {
 
   // If this is a single-image type and one already exists, replace it
   if (existingImage && SINGLE_IMAGE_TYPES.includes(imageType)) {
-    // Soft-delete the old image record
-    await Image.delete(existingImage.id);
+    // Update old image: set is_active = false AND is_primary = false
+    // This is necessary because the unique constraint idx_images_single_primary
+    // only applies to rows where is_primary = TRUE
+    await Image.update(existingImage.id, {
+      isActive: false,
+      isPrimary: false
+    });
 
     // Delete the old file from S3 (non-blocking - won't fail if S3 delete fails)
     if (existingImage.s3Key) {
@@ -404,8 +409,13 @@ const replaceProfileImage = async (userId, requestingUserId, userRole, imageData
 
   // If existing image found, delete it (soft delete + S3 cleanup)
   if (existingImage) {
-    // Soft-delete the old image record
-    await Image.delete(existingImage.id);
+    // Update old image: set is_active = false AND is_primary = false
+    // This is necessary because the unique constraint idx_images_single_primary
+    // only applies to rows where is_primary = TRUE
+    await Image.update(existingImage.id, {
+      isActive: false,
+      isPrimary: false
+    });
 
     // Delete the old file from S3 (non-blocking - won't fail if S3 delete fails)
     if (existingImage.s3Key) {

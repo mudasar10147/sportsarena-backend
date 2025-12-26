@@ -290,10 +290,21 @@ const createImage = async (imageData, userId, userRole) => {
     // Update old image: set is_active = false AND is_primary = false
     // This is necessary because the unique constraint idx_images_single_primary
     // only applies to rows where is_primary = TRUE
-    await Image.update(existingImage.id, {
+    const updatedImage = await Image.update(existingImage.id, {
       isActive: false,
       isPrimary: false
     });
+
+    // Verify the update succeeded
+    if (!updatedImage || updatedImage.isPrimary !== false) {
+      console.error(`[Image Replacement] Warning: Failed to set is_primary = false for image ${existingImage.id}`);
+      // Try direct SQL update as fallback
+      const { pool } = require('../config/database');
+      await pool.query(
+        'UPDATE images SET is_primary = FALSE, is_active = FALSE WHERE id = $1',
+        [existingImage.id]
+      );
+    }
 
     // Delete the old file from S3 (non-blocking - won't fail if S3 delete fails)
     if (existingImage.s3Key) {
@@ -458,10 +469,21 @@ const replaceProfileImage = async (userId, requestingUserId, userRole, imageData
     // Update old image: set is_active = false AND is_primary = false
     // This is necessary because the unique constraint idx_images_single_primary
     // only applies to rows where is_primary = TRUE
-    await Image.update(existingImage.id, {
+    const updatedImage = await Image.update(existingImage.id, {
       isActive: false,
       isPrimary: false
     });
+
+    // Verify the update succeeded
+    if (!updatedImage || updatedImage.isPrimary !== false) {
+      console.error(`[Profile Image Replacement] Warning: Failed to set is_primary = false for image ${existingImage.id}`);
+      // Try direct SQL update as fallback
+      const { pool } = require('../config/database');
+      await pool.query(
+        'UPDATE images SET is_primary = FALSE, is_active = FALSE WHERE id = $1',
+        [existingImage.id]
+      );
+    }
 
     // Delete the old file from S3 (non-blocking - won't fail if S3 delete fails)
     if (existingImage.s3Key) {

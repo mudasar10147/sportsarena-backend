@@ -220,6 +220,7 @@ class Image {
     // Field mapping: camelCase JavaScript property -> snake_case database column
     const fieldMapping = {
       'isActive': 'is_active',
+      'isPrimary': 'is_primary',
       'displayOrder': 'display_order',
       'storageKey': 'storage_key',
       'uploadStatus': 'upload_status',

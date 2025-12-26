@@ -79,8 +79,31 @@ const validateImageCreation = async (imageData, userId, userRole) => {
 
   // For single-image types, return existing image for replacement
   // Don't throw error - we'll replace it automatically
+  // We need to find ANY image with is_primary = TRUE, regardless of status,
+  // because the unique constraint only checks is_primary = TRUE
   if (SINGLE_IMAGE_TYPES.includes(imageType)) {
-    const existing = await Image.getPrimaryImage(entityType, entityId, imageType);
+    let existing = await Image.getPrimaryImage(entityType, entityId, imageType);
+    
+    // If getPrimaryImage didn't find it (due to filters), query directly for any primary image
+    // This handles old accounts where images might be inactive or rejected
+    if (!existing) {
+      const { pool } = require('../config/database');
+      const directQuery = `
+        SELECT id
+        FROM images
+        WHERE entity_type = $1 
+          AND entity_id = $2 
+          AND image_type = $3 
+          AND is_primary = TRUE
+        LIMIT 1
+      `;
+      const result = await pool.query(directQuery, [entityType, entityId, imageType]);
+      if (result.rows.length > 0) {
+        // Use findById to get the properly formatted image object
+        existing = await Image.findById(result.rows[0].id);
+      }
+    }
+    
     return existing; // Return existing image or null
   }
 
@@ -404,10 +427,33 @@ const replaceProfileImage = async (userId, requestingUserId, userRole, imageData
     throw error;
   }
 
-  // Find existing profile image
-  const existingImage = await Image.getPrimaryImage('user', userId, 'profile');
+  // Find existing profile image - we need to find ANY image with is_primary = TRUE
+  // regardless of is_active, is_deleted, or moderation_status, because the unique
+  // constraint idx_images_single_primary only checks is_primary = TRUE
+  // This handles old accounts that might have inactive/rejected images
+  let existingImage = await Image.getPrimaryImage('user', userId, 'profile');
+  
+  // If getPrimaryImage didn't find it (due to filters), query directly for any primary image
+  // This is necessary for old accounts where images might be inactive or rejected
+  if (!existingImage) {
+    const { pool } = require('../config/database');
+    const directQuery = `
+      SELECT id
+      FROM images
+      WHERE entity_type = $1 
+        AND entity_id = $2 
+        AND image_type = $3 
+        AND is_primary = TRUE
+      LIMIT 1
+    `;
+    const result = await pool.query(directQuery, ['user', userId, 'profile']);
+    if (result.rows.length > 0) {
+      // Use findById to get the properly formatted image object
+      existingImage = await Image.findById(result.rows[0].id);
+    }
+  }
 
-  // If existing image found, delete it (soft delete + S3 cleanup)
+  // If existing image found (active or inactive), update it
   if (existingImage) {
     // Update old image: set is_active = false AND is_primary = false
     // This is necessary because the unique constraint idx_images_single_primary

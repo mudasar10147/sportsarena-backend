@@ -6,8 +6,10 @@
 
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
+const Image = require('../models/Image');
 const { generateAuthToken } = require('../utils/jwt');
 const imageService = require('./imageService');
+const { pool } = require('../config/database');
 
 /**
  * Hash password using bcrypt
@@ -144,12 +146,36 @@ const getProfile = async (userId) => {
   }
 
   // Fetch user's profile image to get avatar URL
+  // Query directly for primary profile image that has been uploaded
+  // Include pending images (not yet approved) so users can see their newly uploaded images
   let avatar = null;
   try {
-    const profileImages = await imageService.getEntityImages('user', userId, { imageType: 'profile' });
-    if (profileImages && profileImages.length > 0) {
-      const profileImage = profileImages[0];
-      // Use thumbnail variant if available, otherwise use publicUrl
+    // Query for primary profile image that has been uploaded
+    // Include pending moderation status so users can see newly uploaded images
+    const query = `
+      SELECT id, entity_type, entity_id, image_type, storage_key, url,
+             created_by, is_primary, is_active, display_order, metadata,
+             upload_status, uploaded_at, file_size, content_type,
+             is_deleted, moderation_status, moderation_notes, moderated_by, moderated_at,
+             created_at, updated_at
+      FROM images
+      WHERE entity_type = $1 
+        AND entity_id = $2 
+        AND image_type = $3 
+        AND is_primary = TRUE 
+        AND is_active = TRUE
+        AND is_deleted = FALSE
+        AND upload_status = 'uploaded'
+        AND moderation_status IN ('pending', 'approved')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    
+    const result = await pool.query(query, ['user', userId, 'profile']);
+    
+    if (result.rows.length > 0) {
+      const profileImage = Image._formatImage(result.rows[0]);
+      // Use thumbnail variant if available (best for avatars), otherwise use publicUrl
       avatar = profileImage.variants?.thumb || profileImage.publicUrl || profileImage.url;
     }
   } catch (error) {

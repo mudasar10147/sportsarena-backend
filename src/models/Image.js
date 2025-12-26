@@ -59,9 +59,9 @@ class Image {
       INSERT INTO images (
         entity_type, entity_id, image_type, storage_key, url,
         created_by, is_primary, display_order, metadata,
-        upload_status
+        upload_status, moderation_status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id, entity_type, entity_id, image_type, storage_key, url,
                 created_by, is_primary, is_active, display_order, metadata,
                 upload_status, uploaded_at, file_size, content_type,
@@ -79,7 +79,8 @@ class Image {
       isPrimary,
       displayOrder,
       JSON.stringify(metadata),
-      'pending' // Default upload_status for new images
+      'pending', // Default upload_status for new images
+      'approved' // Auto-approve all images (no moderation needed for sports marketplace)
     ]);
 
     return this._formatImage(result.rows[0]);
@@ -194,7 +195,7 @@ class Image {
         AND is_primary = TRUE 
         AND is_active = TRUE
         AND is_deleted = FALSE
-        AND moderation_status = 'approved'
+        AND moderation_status IN ('approved', 'pending')
       LIMIT 1
     `;
     const result = await pool.query(query, [entityType, entityId, imageType]);

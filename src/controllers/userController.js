@@ -290,6 +290,30 @@ const updateProfile = async (req, res, next) => {
 };
 
 /**
+ * Change user password
+ * PUT /api/v1/users/change-password
+ * Requires authentication
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    // Validation
+    if (!currentPassword || !newPassword) {
+      return sendValidationError(res, 'Both currentPassword and newPassword are required');
+    }
+
+    // Change password
+    const user = await userService.changePassword(userId, currentPassword, newPassword);
+
+    return sendSuccess(res, user, 'Password changed successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Get user's bookings
  * GET /api/v1/users/bookings
  * Requires authentication
@@ -345,6 +369,7 @@ module.exports = {
   login,
   getProfile,
   updateProfile,
+  changePassword,
   getUserBookings,
   deleteUser
 };

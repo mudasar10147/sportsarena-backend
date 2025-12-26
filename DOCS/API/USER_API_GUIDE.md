@@ -301,7 +301,113 @@ Authorization: Bearer <your-jwt-token>
 
 ---
 
-### 5. Get User Bookings
+### 5. Change Password
+
+**`PUT /api/v1/users/change-password`**
+
+Change the authenticated user's password.
+
+**Requires Authentication:** Yes
+
+#### Headers
+
+```
+Authorization: Bearer <your-jwt-token>
+```
+
+#### Request Body
+
+```json
+{
+  "currentPassword": "current_password_here",
+  "newPassword": "new_password_here"
+}
+```
+
+**Required Fields:**
+- `currentPassword` (string): User's current password
+- `newPassword` (string): New password (must meet password requirements)
+
+**Password Requirements:**
+- Minimum 8 characters, maximum 128 characters
+- Must contain at least one uppercase letter
+- Must contain at least one lowercase letter
+- Must contain at least one numerical digit
+- Must contain at least one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
+- Must not contain spaces
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Password changed successfully",
+  "data": {
+    "id": 1,
+    "email": "john@example.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "role": "player",
+    "isActive": true,
+    "emailVerified": false,
+    "createdAt": "2025-01-15T10:30:00.000Z",
+    "updatedAt": "2025-01-15T10:40:00.000Z"
+  }
+}
+```
+
+#### Error Responses
+
+**400 Bad Request - Missing Fields**
+```json
+{
+  "success": false,
+  "message": "Both currentPassword and newPassword are required",
+  "error_code": "VALIDATION_ERROR"
+}
+```
+
+**400 Bad Request - No Password Set**
+```json
+{
+  "success": false,
+  "message": "This account does not have a password. Please use your social login provider to sign in.",
+  "error_code": "NO_PASSWORD_SET"
+}
+```
+
+**400 Bad Request - Same Password**
+```json
+{
+  "success": false,
+  "message": "New password must be different from current password",
+  "error_code": "SAME_PASSWORD"
+}
+```
+
+**400 Bad Request - Password Validation Error**
+```json
+{
+  "success": false,
+  "message": "New password must contain: one uppercase letter, one lowercase letter, one numerical digit, one special character (!@#$%^&*()_+-=[]{}|;:,.<>?), no spaces",
+  "error_code": "VALIDATION_ERROR"
+}
+```
+
+**401 Unauthorized - Invalid Current Password**
+```json
+{
+  "success": false,
+  "message": "Current password is incorrect",
+  "error_code": "INVALID_PASSWORD"
+}
+```
+
+**Note:** This endpoint is only available for users who have a password set (email-based accounts). Users who signed up via OAuth (e.g., Google) cannot change their password through this endpoint.
+
+---
+
+### 6. Get User Bookings
 
 **`GET /api/v1/users/bookings`**
 
@@ -474,6 +580,17 @@ curl -X PUT http://localhost:3000/api/v1/users/profile \
   -d '{
     "firstName": "Jane",
     "phone": "+923009876543"
+  }'
+```
+
+#### Change Password
+```bash
+curl -X PUT http://localhost:3000/api/v1/users/change-password \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentPassword": "old_password123",
+    "newPassword": "new_password123"
   }'
 ```
 

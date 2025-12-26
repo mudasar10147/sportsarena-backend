@@ -149,7 +149,7 @@ class User {
    * @returns {Promise<Object|null>} Updated user object or null if not found
    */
   static async update(userId, updateData) {
-    const allowedFields = ['first_name', 'last_name', 'phone', 'is_active', 'email_verified', 'avatar'];
+    const allowedFields = ['first_name', 'last_name', 'phone', 'is_active', 'email_verified', 'avatar', 'password_hash'];
     const updates = [];
     const values = [];
     let paramCount = 1;
@@ -159,6 +159,7 @@ class User {
                      key === 'lastName' ? 'last_name' :
                      key === 'isActive' ? 'is_active' :
                      key === 'emailVerified' ? 'email_verified' :
+                     key === 'passwordHash' ? 'password_hash' :
                      key === 'avatar' ? 'avatar' : key;
 
       if (allowedFields.includes(dbField) && value !== undefined) {

@@ -211,6 +211,134 @@ const updateProfile = async (userId, updateData) => {
 };
 
 /**
+ * Change user password
+ * @param {number} userId - User ID
+ * @param {string} currentPassword - Current password (plain text)
+ * @param {string} newPassword - New password (plain text)
+ * @returns {Promise<Object>} Updated user object
+ * @throws {Error} If user not found, current password is incorrect, or validation fails
+ */
+const changePassword = async (userId, currentPassword, newPassword) => {
+  // Get user with password hash
+  const user = await User.findById(userId);
+  
+  if (!user) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    error.errorCode = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  // Get password hash directly from database
+  const { pool } = require('../config/database');
+  const passwordQuery = `
+    SELECT password_hash
+    FROM users
+    WHERE id = $1
+  `;
+  const passwordResult = await pool.query(passwordQuery, [userId]);
+  const passwordHash = passwordResult.rows[0]?.password_hash;
+
+  // Check if user has a password (OAuth users might not have passwords)
+  if (!passwordHash) {
+    const error = new Error('This account does not have a password. Please use your social login provider to sign in.');
+    error.statusCode = 400;
+    error.errorCode = 'NO_PASSWORD_SET';
+    throw error;
+  }
+
+  // Verify current password
+  const passwordValid = await verifyPassword(currentPassword, passwordHash);
+  if (!passwordValid) {
+    const error = new Error('Current password is incorrect');
+    error.statusCode = 401;
+    error.errorCode = 'INVALID_PASSWORD';
+    throw error;
+  }
+
+  // Validate new password
+  if (!newPassword || newPassword.trim().length === 0) {
+    const error = new Error('New password cannot be empty');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // Password length validation (minimum 8 characters, maximum 128)
+  if (newPassword.length < 8) {
+    const error = new Error('New password must be at least 8 characters long');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+  if (newPassword.length > 128) {
+    const error = new Error('New password is too long. Maximum 128 characters allowed');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // Password strength validation
+  const passwordErrors = [];
+  
+  // Check for at least one uppercase letter
+  if (!/[A-Z]/.test(newPassword)) {
+    passwordErrors.push('one uppercase letter');
+  }
+  
+  // Check for at least one lowercase letter
+  if (!/[a-z]/.test(newPassword)) {
+    passwordErrors.push('one lowercase letter');
+  }
+  
+  // Check for at least one numerical digit
+  if (!/[0-9]/.test(newPassword)) {
+    passwordErrors.push('one numerical digit');
+  }
+  
+  // Check for at least one special character
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword)) {
+    passwordErrors.push('one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)');
+  }
+
+  // Check for no whitespace
+  if (/\s/.test(newPassword)) {
+    passwordErrors.push('no spaces');
+  }
+
+  if (passwordErrors.length > 0) {
+    const error = new Error(`New password must contain: ${passwordErrors.join(', ')}`);
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // Check if new password is different from current password
+  const samePassword = await verifyPassword(newPassword, passwordHash);
+  if (samePassword) {
+    const error = new Error('New password must be different from current password');
+    error.statusCode = 400;
+    error.errorCode = 'SAME_PASSWORD';
+    throw error;
+  }
+
+  // Hash new password
+  const newPasswordHash = await hashPassword(newPassword);
+
+  // Update password
+  const updatedUser = await User.update(userId, { passwordHash: newPasswordHash });
+
+  if (!updatedUser) {
+    const error = new Error('Failed to update password');
+    error.statusCode = 500;
+    error.errorCode = 'UPDATE_FAILED';
+    throw error;
+  }
+
+  return updatedUser;
+};
+
+/**
  * Parse full name into first and last name
  * @param {string|null} fullName - Full name string
  * @returns {Object} Object with firstName and lastName
@@ -444,6 +572,7 @@ module.exports = {
   loginOrCreateGoogleUser,
   getProfile,
   updateProfile,
+  changePassword,
   deleteUser,
   hashPassword,
   verifyPassword

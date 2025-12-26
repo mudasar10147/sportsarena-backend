@@ -8,6 +8,7 @@
  * - POST   /users/login    - Login and get JWT token
  * - GET    /users/profile  - Get logged-in user profile
  * - PUT    /users/profile  - Update profile (optional for MVP)
+ * - PUT    /users/change-password - Change user password
  * - GET    /users/bookings - Fetch user's bookings
  * - DELETE /users/:identifier - Delete user account (by ID or username)
  */
@@ -25,6 +26,7 @@ router.post('/login', userController.login);
 // Note: Specific routes must come before parameterized routes
 router.get('/profile', authenticate, userController.getProfile);
 router.put('/profile', authenticate, userController.updateProfile);
+router.put('/change-password', authenticate, userController.changePassword);
 router.get('/bookings', authenticate, userController.getUserBookings);
 
 // Delete user route (must come after specific routes to avoid conflicts)

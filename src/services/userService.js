@@ -7,6 +7,7 @@
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const { generateAuthToken } = require('../utils/jwt');
+const imageService = require('./imageService');
 
 /**
  * Hash password using bcrypt
@@ -129,7 +130,7 @@ const login = async (email, password) => {
 /**
  * Get user profile
  * @param {number} userId - User ID
- * @returns {Promise<Object>} User profile object
+ * @returns {Promise<Object>} User profile object with avatar URL
  * @throws {Error} If user not found
  */
 const getProfile = async (userId) => {
@@ -142,7 +143,25 @@ const getProfile = async (userId) => {
     throw error;
   }
 
-  return user;
+  // Fetch user's profile image to get avatar URL
+  let avatar = null;
+  try {
+    const profileImages = await imageService.getEntityImages('user', userId, { imageType: 'profile' });
+    if (profileImages && profileImages.length > 0) {
+      const profileImage = profileImages[0];
+      // Use thumbnail variant if available, otherwise use publicUrl
+      avatar = profileImage.variants?.thumb || profileImage.publicUrl || profileImage.url;
+    }
+  } catch (error) {
+    // If image fetch fails, just continue without avatar (don't fail the whole request)
+    console.warn(`[User Profile] Failed to fetch profile image for user ${userId}:`, error.message);
+  }
+
+  // Add avatar to user object
+  return {
+    ...user,
+    avatar
+  };
 };
 
 /**

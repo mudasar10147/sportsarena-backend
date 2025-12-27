@@ -194,46 +194,159 @@ class Facility {
     // Location-based search (within radius)
     let distanceSelect = '';
     let orderBy = 'ORDER BY created_at DESC';
-    if (latitude && longitude && radiusKm) {
+    const hasLocationFilter = latitude !== undefined && longitude !== undefined;
+    
+    // Calculate distance when latitude and longitude are provided (even without radiusKm)
+    if (hasLocationFilter) {
       // Using Haversine formula for distance calculation
       distanceSelect = `, (
         6371 * acos(
           cos(radians($${paramCount})) *
-          cos(radians(latitude)) *
-          cos(radians(longitude) - radians($${paramCount + 1})) +
+          cos(radians(f.latitude)) *
+          cos(radians(f.longitude) - radians($${paramCount + 1})) +
           sin(radians($${paramCount})) *
-          sin(radians(latitude))
+          sin(radians(f.latitude))
         )
       ) AS distance_km`;
       values.push(latitude, longitude);
-      conditions.push(`latitude IS NOT NULL AND longitude IS NOT NULL`);
-      orderBy = `ORDER BY distance_km ASC`;
       paramCount += 2;
+      
+      // Filter by radius if provided
+      if (radiusKm !== undefined) {
+        conditions.push(`f.latitude IS NOT NULL AND f.longitude IS NOT NULL`);
+      }
+      
+      // Order by distance when coordinates are provided
+      orderBy = `ORDER BY distance_km ASC`;
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const query = `
-      SELECT id, name, description, address, city, latitude, longitude,
-             contact_phone, contact_email, owner_id, photos, opening_hours,
-             is_active, created_at, updated_at
-             ${distanceSelect}
-      FROM facilities
-      ${whereClause}
-      ${orderBy}
-      LIMIT $${paramCount} OFFSET $${paramCount + 1}
+    // Subquery for minimum price per hour
+    const minPriceSubquery = `
+      (SELECT MIN(c.price_per_hour)
+       FROM courts c
+       WHERE c.facility_id = f.id AND c.is_active = TRUE)
     `;
 
-    const countQuery = `
-      SELECT COUNT(*) as total
-      FROM facilities
+    // Subquery for sports offered (JSON aggregation)
+    const sportsSubquery = `
+      COALESCE((
+        SELECT json_agg(json_build_object('id', s.id, 'name', s.name))
+        FROM facility_sports fs
+        INNER JOIN sports s ON fs.sport_id = s.id
+        WHERE fs.facility_id = f.id 
+          AND fs.is_active = TRUE 
+          AND s.is_active = TRUE
+      ), '[]'::json)
+    `;
+
+    // Build the inner query
+    let innerQuery = `
+      SELECT 
+        f.id, f.name, f.description, f.address, f.city, f.latitude, f.longitude,
+        f.contact_phone, f.contact_email, f.owner_id, f.photos, f.opening_hours,
+        f.is_active, f.created_at, f.updated_at,
+        ${minPriceSubquery} AS min_price_per_hour,
+        ${sportsSubquery} AS sports
+        ${distanceSelect}
+      FROM facilities f
       ${whereClause}
     `;
 
-    values.push(limit, offset);
+    // Wrap in outer query to filter by radius if needed
+    let query;
+    if (hasLocationFilter && radiusKm !== undefined) {
+      query = `
+        SELECT * FROM (
+          ${innerQuery}
+        ) AS facility_data
+        WHERE distance_km <= $${paramCount}
+        ${orderBy}
+        LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
+      `;
+      values.push(radiusKm, limit, offset);
+      paramCount += 3;
+    } else {
+      query = `
+        ${innerQuery}
+        ${orderBy}
+        LIMIT $${paramCount} OFFSET $${paramCount + 1}
+      `;
+      values.push(limit, offset);
+      paramCount += 2;
+    }
+
+    // For count query, we need to handle radius filtering separately
+    let countQuery;
+    let countValues = [];
+    let countParamCount = 1;
+    
+    if (hasLocationFilter && radiusKm !== undefined) {
+      // Count query needs to calculate distance and filter by radius
+      // Build conditions in the same order as the main query
+      const countConditions = [];
+      
+      if (city) {
+        countConditions.push(`city = $${countParamCount}`);
+        countValues.push(city);
+        countParamCount++;
+      }
+      
+      if (isActive !== undefined) {
+        countConditions.push(`is_active = $${countParamCount}`);
+        countValues.push(isActive);
+        countParamCount++;
+      }
+      
+      countConditions.push(`latitude IS NOT NULL AND longitude IS NOT NULL`);
+      
+      // Add distance calculation in WHERE clause
+      const countDistanceFormula = `(
+        6371 * acos(
+          cos(radians($${countParamCount})) *
+          cos(radians(latitude)) *
+          cos(radians(longitude) - radians($${countParamCount + 1})) +
+          sin(radians($${countParamCount})) *
+          sin(radians(latitude))
+        )
+      )`;
+      countConditions.push(`${countDistanceFormula} <= $${countParamCount + 2}`);
+      countValues.push(latitude, longitude, radiusKm);
+      
+      countQuery = `
+        SELECT COUNT(*) as total
+        FROM facilities
+        WHERE ${countConditions.join(' AND ')}
+      `;
+    } else {
+      // Build count conditions matching the main query
+      const countConditions = [];
+      let countParamIdx = 1;
+      
+      if (city) {
+        countConditions.push(`city = $${countParamIdx}`);
+        countValues.push(city);
+        countParamIdx++;
+      }
+      
+      if (isActive !== undefined) {
+        countConditions.push(`is_active = $${countParamIdx}`);
+        countValues.push(isActive);
+        countParamIdx++;
+      }
+      
+      const countWhereClause = countConditions.length > 0 ? `WHERE ${countConditions.join(' AND ')}` : '';
+      countQuery = `
+        SELECT COUNT(*) as total
+        FROM facilities
+        ${countWhereClause}
+      `;
+    }
+
     const [result, countResult] = await Promise.all([
       pool.query(query, values),
-      pool.query(countQuery, values.slice(0, -2))
+      pool.query(countQuery, countValues)
     ]);
 
     return {
@@ -293,7 +406,7 @@ class Facility {
   static _formatFacility(row) {
     if (!row) return null;
 
-    return {
+    const formatted = {
       id: row.id,
       name: row.name,
       description: row.description,
@@ -308,9 +421,27 @@ class Facility {
       openingHours: typeof row.opening_hours === 'string' ? JSON.parse(row.opening_hours) : (row.opening_hours || {}),
       isActive: row.is_active,
       createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      ...(row.distance_km !== undefined && { distanceKm: parseFloat(row.distance_km) })
+      updatedAt: row.updated_at
     };
+
+    // Add distance if calculated
+    if (row.distance_km !== undefined && row.distance_km !== null) {
+      formatted.distanceKm = parseFloat(row.distance_km);
+    }
+
+    // Add minimum price per hour if available
+    if (row.min_price_per_hour !== undefined && row.min_price_per_hour !== null) {
+      formatted.minPricePerHour = parseFloat(row.min_price_per_hour);
+    }
+
+    // Add sports if available
+    if (row.sports !== undefined && row.sports !== null) {
+      formatted.sports = typeof row.sports === 'string' ? JSON.parse(row.sports) : row.sports;
+    } else {
+      formatted.sports = [];
+    }
+
+    return formatted;
   }
 }
 

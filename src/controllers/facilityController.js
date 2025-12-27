@@ -69,7 +69,34 @@ const getFacilityDetails = async (req, res, next) => {
       return sendValidationError(res, 'Invalid facility ID');
     }
 
-    const facility = await facilityService.getFacilityDetails(facilityId);
+    // Extract optional location parameters for distance calculation
+    const { latitude, longitude } = req.query;
+    const locationParams = {};
+    
+    if (latitude !== undefined || longitude !== undefined) {
+      if (latitude === undefined || longitude === undefined) {
+        return sendValidationError(
+          res,
+          'Both latitude and longitude must be provided together for distance calculation'
+        );
+      }
+      
+      const lat = parseFloat(latitude);
+      const lng = parseFloat(longitude);
+      
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        return sendValidationError(res, 'Invalid latitude. Must be between -90 and 90');
+      }
+      
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        return sendValidationError(res, 'Invalid longitude. Must be between -180 and 180');
+      }
+      
+      locationParams.latitude = lat;
+      locationParams.longitude = lng;
+    }
+
+    const facility = await facilityService.getFacilityDetails(facilityId, locationParams);
 
     return sendSuccess(res, facility, 'Facility details retrieved successfully');
   } catch (error) {

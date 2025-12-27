@@ -87,12 +87,15 @@ const getAllFacilities = async (filters = {}) => {
 /**
  * Get facility details with related data (courts, sports)
  * @param {number} facilityId - Facility ID
+ * @param {Object} [locationParams] - Optional location parameters for distance calculation
+ * @param {number} [locationParams.latitude] - Latitude for distance calculation
+ * @param {number} [locationParams.longitude] - Longitude for distance calculation
  * @returns {Promise<Object>} Facility object with courts and sports
  * @throws {Error} If facility not found
  */
-const getFacilityDetails = async (facilityId) => {
-  // Get facility
-  const facility = await Facility.findById(facilityId);
+const getFacilityDetails = async (facilityId, locationParams = {}) => {
+  // Get facility with optional distance calculation
+  const facility = await Facility.findById(facilityId, locationParams);
 
   if (!facility) {
     const error = new Error('Facility not found');

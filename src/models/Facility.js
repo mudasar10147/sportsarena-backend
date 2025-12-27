@@ -64,17 +64,40 @@ class Facility {
   /**
    * Find facility by ID
    * @param {number} facilityId - Facility ID
+   * @param {Object} [locationParams] - Optional location parameters for distance calculation
+   * @param {number} [locationParams.latitude] - Latitude for distance calculation
+   * @param {number} [locationParams.longitude] - Longitude for distance calculation
    * @returns {Promise<Object|null>} Facility object or null if not found
    */
-  static async findById(facilityId) {
+  static async findById(facilityId, locationParams = {}) {
+    const { latitude, longitude } = locationParams;
+    let distanceSelect = '';
+    const values = [facilityId];
+    
+    // Calculate distance when latitude and longitude are provided
+    if (latitude !== undefined && longitude !== undefined) {
+      // Using Haversine formula for distance calculation
+      distanceSelect = `, (
+        6371 * acos(
+          cos(radians($2)) *
+          cos(radians(latitude)) *
+          cos(radians(longitude) - radians($3)) +
+          sin(radians($2)) *
+          sin(radians(latitude))
+        )
+      ) AS distance_km`;
+      values.push(latitude, longitude);
+    }
+    
     const query = `
       SELECT id, name, description, address, city, latitude, longitude,
              contact_phone, contact_email, owner_id, photos, opening_hours,
              is_active, created_at, updated_at
+             ${distanceSelect}
       FROM facilities
       WHERE id = $1
     `;
-    const result = await pool.query(query, [facilityId]);
+    const result = await pool.query(query, values);
     return result.rows[0] ? this._formatFacility(result.rows[0]) : null;
   }
 

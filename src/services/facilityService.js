@@ -213,10 +213,96 @@ const updateFacility = async (facilityId, updateData, userId) => {
   return updatedFacility;
 };
 
+/**
+ * Get closest facilities to a given location with pagination
+ * @param {number} latitude - Latitude coordinate
+ * @param {number} longitude - Longitude coordinate
+ * @param {number} [page=1] - Page number (default: 1)
+ * @param {number} [limit=7] - Number of facilities per page (default: 7)
+ * @returns {Promise<Object>} Object with facilities array and pagination info (max 28 total facilities)
+ */
+const getClosestFacilities = async (latitude, longitude, page = 1, limit = 7) => {
+  // Validate coordinates
+  if (latitude === undefined || longitude === undefined) {
+    const error = new Error('Latitude and longitude are required');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  if (isNaN(latitude) || latitude < -90 || latitude > 90) {
+    const error = new Error('Invalid latitude. Must be between -90 and 90');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  if (isNaN(longitude) || longitude < -180 || longitude > 180) {
+    const error = new Error('Invalid longitude. Must be between -180 and 180');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  const pageNum = parseInt(page, 10) || 1;
+  const limitNum = parseInt(limit, 10) || 7;
+  const MAX_TOTAL_FACILITIES = 28;
+  const maxPage = Math.ceil(MAX_TOTAL_FACILITIES / limitNum);
+
+  // Validate page number
+  if (pageNum < 1) {
+    const error = new Error('Page must be a positive number');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  if (pageNum > maxPage) {
+    const error = new Error(`Page number exceeds maximum. Maximum page is ${maxPage} (${MAX_TOTAL_FACILITIES} total facilities)`);
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // Calculate offset
+  const offset = (pageNum - 1) * limitNum;
+  
+  // Get facilities ordered by distance (using existing findAll method)
+  // We fetch up to MAX_TOTAL_FACILITIES to limit total results and get accurate count
+  const options = {
+    latitude: parseFloat(latitude),
+    longitude: parseFloat(longitude),
+    isActive: true,
+    limit: MAX_TOTAL_FACILITIES, // Fetch max allowed facilities (28) to get accurate total
+    offset: 0
+    // Note: Not providing radiusKm means we get all facilities ordered by distance
+  };
+
+  const result = await Facility.findAll(options);
+  
+  // Limit to MAX_TOTAL_FACILITIES (in case there are more in the database)
+  const allFacilities = result.facilities.slice(0, MAX_TOTAL_FACILITIES);
+  const total = Math.min(allFacilities.length, MAX_TOTAL_FACILITIES);
+  
+  // Apply pagination to get the requested page
+  const paginatedFacilities = allFacilities.slice(offset, offset + limitNum);
+
+  return {
+    facilities: paginatedFacilities,
+    total,
+    page: pageNum,
+    limit: limitNum,
+    totalPages: Math.ceil(total / limitNum),
+    hasNextPage: offset + limitNum < total,
+    hasPreviousPage: pageNum > 1
+  };
+};
+
 module.exports = {
   getAllFacilities,
   getFacilityDetails,
   createFacility,
-  updateFacility
+  updateFacility,
+  getClosestFacilities
 };
 

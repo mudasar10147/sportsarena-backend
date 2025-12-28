@@ -221,6 +221,9 @@ class Facility {
     
     // Calculate distance when latitude and longitude are provided (even without radiusKm)
     if (hasLocationFilter) {
+      // Filter out facilities without coordinates when location-based search is used
+      conditions.push(`f.latitude IS NOT NULL AND f.longitude IS NOT NULL`);
+      
       // Using Haversine formula for distance calculation
       distanceSelect = `, (
         6371 * acos(
@@ -233,11 +236,6 @@ class Facility {
       ) AS distance_km`;
       values.push(latitude, longitude);
       paramCount += 2;
-      
-      // Filter by radius if provided
-      if (radiusKm !== undefined) {
-        conditions.push(`f.latitude IS NOT NULL AND f.longitude IS NOT NULL`);
-      }
       
       // Order by distance when coordinates are provided
       orderBy = `ORDER BY distance_km ASC`;
@@ -357,6 +355,11 @@ class Facility {
         countConditions.push(`is_active = $${countParamIdx}`);
         countValues.push(isActive);
         countParamIdx++;
+      }
+      
+      // Add coordinate filter if location-based search is used (even without radiusKm)
+      if (hasLocationFilter) {
+        countConditions.push(`latitude IS NOT NULL AND longitude IS NOT NULL`);
       }
       
       const countWhereClause = countConditions.length > 0 ? `WHERE ${countConditions.join(' AND ')}` : '';

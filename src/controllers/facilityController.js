@@ -250,10 +250,67 @@ const updateFacility = async (req, res, next) => {
   }
 };
 
+/**
+ * Get closest arenas to a given location with pagination
+ * GET /api/v1/facilities/closest
+ */
+const getClosestArenas = async (req, res, next) => {
+  try {
+    const { latitude, longitude, page, limit } = req.query;
+
+    // Validate required parameters
+    if (!latitude || !longitude) {
+      return sendValidationError(
+        res,
+        'Both latitude and longitude are required'
+      );
+    }
+
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+
+    // Validate coordinate ranges
+    if (isNaN(lat) || lat < -90 || lat > 90) {
+      return sendValidationError(res, 'Invalid latitude. Must be between -90 and 90');
+    }
+
+    if (isNaN(lng) || lng < -180 || lng > 180) {
+      return sendValidationError(res, 'Invalid longitude. Must be between -180 and 180');
+    }
+
+    // Parse pagination parameters (default page: 1, default limit: 7)
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 7;
+
+    if (isNaN(pageNum) || pageNum < 1) {
+      return sendValidationError(res, 'Page must be a positive number');
+    }
+
+    if (isNaN(limitNum) || limitNum < 1) {
+      return sendValidationError(res, 'Limit must be a positive number');
+    }
+
+    // Get closest facilities with pagination
+    const result = await facilityService.getClosestFacilities(lat, lng, pageNum, limitNum);
+
+    return sendPaginatedResponse(
+      res,
+      result.facilities,
+      result.page,
+      result.limit,
+      result.total,
+      `Closest arenas retrieved successfully`
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   listFacilities,
   getFacilityDetails,
   createFacility,
-  updateFacility
+  updateFacility,
+  getClosestArenas
 };
 

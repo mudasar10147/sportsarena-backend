@@ -5,6 +5,7 @@
  * 
  * Endpoints:
  * - GET    /facilities       - List all facilities (with optional filters: city, sport)
+ * - GET    /facilities/closest - Get top 7 closest arenas based on latitude/longitude
  * - GET    /facilities/:id   - Get details of a facility (photos, courts, opening hours)
  * - POST   /facilities       - Add a facility (only for admin/facility owner)
  * - PUT    /facilities/:id   - Update facility details (admin)
@@ -30,6 +31,7 @@ const { requireFacilityAdmin } = require('../../middleware/authorization');
 
 // Public routes (no authentication required)
 router.get('/', facilityController.listFacilities);
+router.get('/closest', facilityController.getClosestArenas);
 
 // Nested FacilitySport routes (must come before /:id route)
 router.get('/:id/sports', facilitySportController.getFacilitySports);

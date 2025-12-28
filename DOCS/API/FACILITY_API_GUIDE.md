@@ -125,7 +125,183 @@ GET /api/v1/facilities?latitude=24.8607&longitude=67.0011&radiusKm=5
 
 ---
 
-### 2. Get Facility Details
+### 2. Get Closest Arenas
+
+**`GET /api/v1/facilities/closest`**
+
+Retrieve the closest arenas (facilities) to a given location based on latitude and longitude coordinates. Results are paginated, returning 7 facilities per page (default), with a maximum of 28 total facilities (4 pages).
+
+**Authentication:** Not required (public endpoint)
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `latitude` | number | Yes | Latitude coordinate (-90 to 90) |
+| `longitude` | number | Yes | Longitude coordinate (-180 to 180) |
+| `page` | number | No | Page number (default: 1, max: 4) |
+| `limit` | number | No | Number of facilities per page (default: 7) |
+
+**Pagination Details:**
+- Default: 7 facilities per page
+- Maximum total facilities: 28 (across all pages)
+- Maximum pages: 4 (when using default limit of 7)
+- Results are ordered by distance (closest first)
+
+#### Example Requests
+
+```
+GET /api/v1/facilities/closest?latitude=24.8607&longitude=67.0011
+GET /api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=1
+GET /api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=2
+GET /api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=1&limit=7
+```
+
+#### Success Response (200 OK)
+
+**Page 1 Example:**
+```json
+{
+  "success": true,
+  "message": "Closest arenas retrieved successfully",
+  "data": [
+    {
+      "id": 1,
+      "name": "Elite Sports Center",
+      "description": "Premium sports facility with multiple courts",
+      "address": "123 Sports Street, Karachi",
+      "city": "Karachi",
+      "latitude": 24.8607,
+      "longitude": 67.0011,
+      "contactPhone": "+923001234567",
+      "contactEmail": "info@elitesports.com",
+      "ownerId": 5,
+      "photos": [
+        "https://example.com/photo1.jpg",
+        "https://example.com/photo2.jpg"
+      ],
+      "openingHours": {
+        "monday": { "open": "09:00", "close": "22:00" },
+        "tuesday": { "open": "09:00", "close": "22:00" }
+      },
+      "isActive": true,
+      "createdAt": "2025-01-15T10:30:00.000Z",
+      "updatedAt": "2025-01-15T10:30:00.000Z",
+      "distanceKm": 0.5,
+      "minPricePerHour": 1500.00,
+      "sports": [
+        {
+          "id": 1,
+          "name": "Padel"
+        },
+        {
+          "id": 2,
+          "name": "Tennis"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Ace Padel",
+      "description": "Modern padel facility",
+      "address": "456 Game Avenue, Karachi",
+      "city": "Karachi",
+      "latitude": 24.8650,
+      "longitude": 67.0050,
+      "contactPhone": "+923009876543",
+      "contactEmail": "info@acepadel.com",
+      "ownerId": 6,
+      "photos": [],
+      "openingHours": {},
+      "isActive": true,
+      "createdAt": "2025-01-15T11:00:00.000Z",
+      "updatedAt": "2025-01-15T11:00:00.000Z",
+      "distanceKm": 1.2,
+      "minPricePerHour": 2000.00,
+      "sports": [
+        {
+          "id": 1,
+          "name": "Padel"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 7,
+    "total": 28,
+    "totalPages": 4,
+    "hasNextPage": true,
+    "hasPreviousPage": false
+  }
+}
+```
+
+**Page 2 Example:**
+```json
+{
+  "success": true,
+  "message": "Closest arenas retrieved successfully",
+  "data": [
+    {
+      "id": 8,
+      "name": "Sports Hub",
+      "distanceKm": 3.5,
+      ...
+    },
+    ...
+  ],
+  "pagination": {
+    "page": 2,
+    "limit": 7,
+    "total": 28,
+    "totalPages": 4,
+    "hasNextPage": true,
+    "hasPreviousPage": true
+  }
+}
+```
+
+**Note:** 
+- Results are ordered by distance (closest first)
+- `distanceKm` shows the distance in kilometers from the provided coordinates
+- Only active facilities with valid coordinates are included
+- The response includes `minPricePerHour` and `sports` information for each facility
+- Maximum of 28 facilities total will be returned across all pages
+- Use the `page` parameter to get the next set of facilities
+
+#### Error Responses
+
+**400 Bad Request - Missing Parameters**
+```json
+{
+  "success": false,
+  "message": "Both latitude and longitude are required",
+  "error_code": "VALIDATION_ERROR"
+}
+```
+
+**400 Bad Request - Invalid Coordinates**
+```json
+{
+  "success": false,
+  "message": "Invalid latitude. Must be between -90 and 90",
+  "error_code": "VALIDATION_ERROR"
+}
+```
+
+**400 Bad Request - Page Exceeds Maximum**
+```json
+{
+  "success": false,
+  "message": "Page number exceeds maximum. Maximum page is 4 (28 total facilities)",
+  "error_code": "VALIDATION_ERROR"
+}
+```
+
+---
+
+### 3. Get Facility Details
 
 **`GET /api/v1/facilities/:id`**
 
@@ -205,7 +381,7 @@ Get detailed information about a specific facility, including its courts and ava
 
 ---
 
-### 3. Create Facility
+### 4. Create Facility
 
 **`POST /api/v1/facilities`**
 
@@ -326,7 +502,7 @@ Create a new facility. Only users with `facility_admin` role can create faciliti
 
 ---
 
-### 4. Update Facility
+### 5. Update Facility
 
 **`PUT /api/v1/facilities/:id`**
 
@@ -470,6 +646,21 @@ curl -X GET "http://localhost:3000/api/v1/facilities?sportId=1&page=1&limit=10"
 #### Location-Based Search
 ```bash
 curl -X GET "http://localhost:3000/api/v1/facilities?latitude=24.8607&longitude=67.0011&radiusKm=5"
+```
+
+#### Get Closest Arenas (Page 1)
+```bash
+curl -X GET "http://localhost:3000/api/v1/facilities/closest?latitude=24.8607&longitude=67.0011"
+```
+
+#### Get Closest Arenas (Page 2)
+```bash
+curl -X GET "http://localhost:3000/api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=2"
+```
+
+#### Get Closest Arenas (Page 3)
+```bash
+curl -X GET "http://localhost:3000/api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=3"
 ```
 
 #### Get Facility Details

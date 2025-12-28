@@ -189,8 +189,9 @@ const generateSlotsForCourt = async (req, res, next) => {
       return sendValidationError(res, 'Invalid court ID');
     }
 
-    // Parse slot duration (default: 1 hour)
-    let slotDurationHours = 1;
+    // Parse slot duration (default: 0.5 hour - new standard)
+    // All new slots should be generated as 0.5-hour base units
+    let slotDurationHours = 0.5; // Changed default from 1 to 0.5
     if (slotDuration !== undefined) {
       slotDurationHours = parseFloat(slotDuration);
       if (isNaN(slotDurationHours) || slotDurationHours < 0.5) {
@@ -234,8 +235,9 @@ const generateSlotsForAllCourts = async (req, res, next) => {
       return sendValidationError(res, 'Invalid facility ID');
     }
 
-    // Parse slot duration (default: 1 hour)
-    let slotDurationHours = 1;
+    // Parse slot duration (default: 0.5 hour - new standard)
+    // All new slots should be generated as 0.5-hour base units
+    let slotDurationHours = 0.5; // Changed default from 1 to 0.5
     if (slotDuration !== undefined) {
       slotDurationHours = parseFloat(slotDuration);
       if (isNaN(slotDurationHours) || slotDurationHours < 0.5) {

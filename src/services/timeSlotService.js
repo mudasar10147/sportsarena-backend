@@ -125,8 +125,8 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
         // All slots are 0.5-hour base units, so combine consecutive slots
         const durationMs = durationHours * 60 * 60 * 1000;
         const halfHourMs = 0.5 * 60 * 60 * 1000;
+        const oneHourMs = 1 * 60 * 60 * 1000;
         const tolerance = 60 * 1000;
-        const requiredSlotsCount = Math.round(durationHours * 2);
         
         const sortedSlots = [...filteredByDate].sort((a, b) => 
           new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
@@ -134,13 +134,41 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
         
         const resultSlots = [];
         
+        // Detect slot duration in filtered slots (newly generated slots should be 0.5-hour)
+        let detectedSlotDuration = null;
+        let detectedSlotDurationHours = null;
+        let requiredSlotsCount;
+        if (filteredByDate.length > 0) {
+          const sampleSlot = filteredByDate[0];
+          const sampleDuration = new Date(sampleSlot.endTime).getTime() - new Date(sampleSlot.startTime).getTime();
+          if (Math.abs(sampleDuration - halfHourMs) < tolerance) {
+            detectedSlotDuration = halfHourMs;
+            detectedSlotDurationHours = 0.5;
+            requiredSlotsCount = Math.round(durationHours * 2);
+          } else if (Math.abs(sampleDuration - oneHourMs) < tolerance) {
+            detectedSlotDuration = oneHourMs;
+            detectedSlotDurationHours = 1;
+            requiredSlotsCount = Math.round(durationHours);
+          } else {
+            // Default to 0.5-hour for new slots
+            detectedSlotDuration = halfHourMs;
+            detectedSlotDurationHours = 0.5;
+            requiredSlotsCount = Math.round(durationHours * 2);
+          }
+        } else {
+          // No slots, default to 0.5-hour
+          detectedSlotDuration = halfHourMs;
+          detectedSlotDurationHours = 0.5;
+          requiredSlotsCount = Math.round(durationHours * 2);
+        }
+        
         for (let i = 0; i <= sortedSlots.length - requiredSlotsCount; i++) {
           const firstSlot = sortedSlots[i];
           const firstSlotStart = new Date(firstSlot.startTime).getTime();
           const firstSlotEnd = new Date(firstSlot.endTime).getTime();
           const firstSlotDuration = firstSlotEnd - firstSlotStart;
           
-          if (Math.abs(firstSlotDuration - halfHourMs) > tolerance) {
+          if (detectedSlotDuration && Math.abs(firstSlotDuration - detectedSlotDuration) > tolerance) {
             continue;
           }
           
@@ -153,7 +181,7 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
             const nextSlotEnd = new Date(nextSlot.endTime).getTime();
             const nextSlotDuration = nextSlotEnd - nextSlotStart;
             
-            if (Math.abs(nextSlotDuration - halfHourMs) > tolerance) {
+            if (detectedSlotDuration && Math.abs(nextSlotDuration - detectedSlotDuration) > tolerance) {
               break;
             }
             
@@ -185,15 +213,49 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
   }
   
   // Handle all duration types: 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, etc.
-  // Strategy: Since all slots are 0.5-hour base units, we combine consecutive slots
+  // Strategy: Since all slots should be 0.5-hour base units, we combine consecutive slots
   // to match the requested duration. For example:
   // - 0.5h = 1 slot, 1h = 2 slots, 1.5h = 3 slots, 2h = 4 slots, etc.
+  // 
+  // Note: If existing slots are 1-hour (legacy), we'll detect and handle them
   const durationMs = durationHours * 60 * 60 * 1000;
   const halfHourMs = 0.5 * 60 * 60 * 1000; // 0.5 hour in milliseconds
+  const oneHourMs = 1 * 60 * 60 * 1000; // 1 hour in milliseconds (for legacy slots)
   const tolerance = 60 * 1000; // 1 minute tolerance for time comparisons
-  const requiredSlotsCount = Math.round(durationHours * 2); // Number of 0.5-hour slots needed
   
-  console.log(`[DEBUG] Duration filtering: durationHours=${durationHours}, requiredSlotsCount=${requiredSlotsCount}, filteredByDateRange.length=${filteredByDateRange.length}`);
+  // Detect what slot duration we have in the database
+  let detectedSlotDuration = null;
+  let detectedSlotDurationHours = null;
+  if (filteredByDateRange.length > 0) {
+    const sampleSlot = filteredByDateRange[0];
+    const sampleDuration = new Date(sampleSlot.endTime).getTime() - new Date(sampleSlot.startTime).getTime();
+    
+    if (Math.abs(sampleDuration - halfHourMs) < tolerance) {
+      detectedSlotDuration = halfHourMs;
+      detectedSlotDurationHours = 0.5;
+      console.log(`[DEBUG] Detected 0.5-hour slots in database (correct format)`);
+    } else if (Math.abs(sampleDuration - oneHourMs) < tolerance) {
+      detectedSlotDuration = oneHourMs;
+      detectedSlotDurationHours = 1;
+      console.log(`[DEBUG] WARNING: Detected 1-hour slots in database (legacy format). These should be regenerated as 0.5-hour slots.`);
+    } else {
+      console.log(`[DEBUG] WARNING: Detected non-standard slot duration: ${sampleDuration}ms (${sampleDuration / (60 * 60 * 1000)} hours)`);
+    }
+  }
+  
+  // Calculate required slots count based on detected slot duration
+  let requiredSlotsCount;
+  if (detectedSlotDurationHours === 1) {
+    // For 1-hour legacy slots: 1h = 1 slot, 2h = 2 slots, etc.
+    requiredSlotsCount = Math.round(durationHours);
+    console.log(`[DEBUG] Using legacy 1-hour slot matching: durationHours=${durationHours}, requiredSlotsCount=${requiredSlotsCount}`);
+  } else {
+    // For 0.5-hour slots: 0.5h = 1 slot, 1h = 2 slots, 1.5h = 3 slots, etc.
+    requiredSlotsCount = Math.round(durationHours * 2);
+    console.log(`[DEBUG] Using 0.5-hour slot matching: durationHours=${durationHours}, requiredSlotsCount=${requiredSlotsCount}`);
+  }
+  
+  console.log(`[DEBUG] Duration filtering: durationHours=${durationHours}, requiredSlotsCount=${requiredSlotsCount}, filteredByDateRange.length=${filteredByDateRange.length}, detectedSlotDuration=${detectedSlotDurationHours} hours`);
   
   // Sort slots by start time to ensure we process them in order
   const sortedSlots = [...filteredByDateRange].sort((a, b) => 
@@ -202,9 +264,9 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
   
   const resultSlots = [];
   
-  // Find consecutive 0.5-hour slots that add up to the requested duration
+  // Find consecutive slots that add up to the requested duration
   let slotsChecked = 0;
-  let slotsSkippedNotHalfHour = 0;
+  let slotsSkippedWrongDuration = 0;
   let consecutiveGroupsFound = 0;
   
   for (let i = 0; i <= sortedSlots.length - requiredSlotsCount; i++) {
@@ -214,10 +276,10 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
     const firstSlotDuration = firstSlotEnd - firstSlotStart;
     slotsChecked++;
     
-    // Check if first slot is approximately 0.5 hours (base unit)
-    if (Math.abs(firstSlotDuration - halfHourMs) > tolerance) {
-      slotsSkippedNotHalfHour++;
-      continue; // Skip slots that aren't 0.5-hour base units
+    // Check if first slot matches detected slot duration
+    if (detectedSlotDuration && Math.abs(firstSlotDuration - detectedSlotDuration) > tolerance) {
+      slotsSkippedWrongDuration++;
+      continue; // Skip slots that don't match detected duration
     }
     
     // Try to find the required number of consecutive 0.5-hour slots
@@ -230,9 +292,9 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
       const nextSlotEnd = new Date(nextSlot.endTime).getTime();
       const nextSlotDuration = nextSlotEnd - nextSlotStart;
       
-      // Check if next slot is approximately 0.5 hours
-      if (Math.abs(nextSlotDuration - halfHourMs) > tolerance) {
-        break; // Not a 0.5-hour slot, can't form consecutive group
+      // Check if next slot matches detected slot duration
+      if (detectedSlotDuration && Math.abs(nextSlotDuration - detectedSlotDuration) > tolerance) {
+        break; // Not matching detected duration, can't form consecutive group
       }
       
       // Check if next slot starts exactly when current slot ends (consecutive)
@@ -258,7 +320,7 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
     }
   }
   
-  console.log(`[DEBUG] Slot matching: checked=${slotsChecked}, skippedNotHalfHour=${slotsSkippedNotHalfHour}, consecutiveGroupsFound=${consecutiveGroupsFound}, finalResults=${resultSlots.length}`);
+  console.log(`[DEBUG] Slot matching: checked=${slotsChecked}, skippedWrongDuration=${slotsSkippedWrongDuration}, consecutiveGroupsFound=${consecutiveGroupsFound}, finalResults=${resultSlots.length}`);
   
   return resultSlots;
 };

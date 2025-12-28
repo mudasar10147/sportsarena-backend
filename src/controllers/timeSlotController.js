@@ -29,6 +29,9 @@ const getCourtTimeSlots = async (req, res, next) => {
     const courtId = parseInt(req.params.id, 10);
     const { fromDate, duration } = req.query;
 
+    // Debug logging
+    console.log(`[DEBUG] getCourtTimeSlots - courtId: ${courtId}, duration: ${duration} (type: ${typeof duration}), fromDate: ${fromDate}`);
+
     if (isNaN(courtId)) {
       return sendValidationError(res, 'Invalid court ID');
     }
@@ -56,18 +59,23 @@ const getCourtTimeSlots = async (req, res, next) => {
     let durationHours = 1; // Default: 1 hour
     if (duration !== undefined) {
       durationHours = parseFloat(duration);
+      console.log(`[DEBUG] Parsed duration: ${durationHours} (from "${duration}")`);
       if (isNaN(durationHours) || durationHours < 0.5) {
+        console.log(`[DEBUG] Duration validation failed: isNaN=${isNaN(durationHours)}, value=${durationHours}`);
         return sendValidationError(res, 'Invalid duration. Must be at least 0.5 hours (30 minutes)');
       }
       
       // Check if duration is in 0.5-hour increments (0.5, 1, 1.5, 2, 2.5, 3, etc.)
       const remainder = (durationHours * 10) % 5;
       if (remainder !== 0) {
+        console.log(`[DEBUG] Duration increment validation failed: remainder=${remainder}`);
         return sendValidationError(res, 'Invalid duration. Duration must be in 0.5-hour increments (0.5, 1, 1.5, 2, 2.5, 3, etc.)');
       }
     }
 
+    console.log(`[DEBUG] Calling getAvailableSlotsForCourt with: courtId=${courtId}, startDate=${startDate}, durationHours=${durationHours}`);
     const slots = await timeSlotService.getAvailableSlotsForCourt(courtId, startDate, durationHours);
+    console.log(`[DEBUG] Returning ${slots.length} slots for court ${courtId}`);
 
     return sendSuccess(res, slots, 'Time slots retrieved successfully');
   } catch (error) {

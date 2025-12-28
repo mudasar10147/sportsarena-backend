@@ -22,14 +22,19 @@ const Facility = require('../models/Facility');
  * @throws {Error} If court not found
  */
 const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours = 1) => {
+  // Debug logging
+  console.log(`[DEBUG] getAvailableSlotsForCourt called: courtId=${courtId}, fromDate=${fromDate}, durationHours=${durationHours}`);
+  
   // Verify court exists
   const court = await Court.findById(courtId);
   if (!court) {
+    console.log(`[DEBUG] Court ${courtId} not found`);
     const error = new Error('Court not found');
     error.statusCode = 404;
     error.errorCode = 'COURT_NOT_FOUND';
     throw error;
   }
+  console.log(`[DEBUG] Court ${courtId} found, facilityId=${court.facilityId}`);
 
   // Validate duration
   if (durationHours < 0.5) {
@@ -64,12 +69,14 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
   
   // Get available slots for the requested date range (up to 30 days from today)
   const slots = await TimeSlot.getAvailableSlotsNext30Days(courtId, startDate, endDate);
+  console.log(`[DEBUG] Found ${slots.length} total slots for court ${courtId}`);
   
   // Filter slots to only include those within 30 days from today
   const filteredByDateRange = slots.filter(slot => {
     const slotDate = new Date(slot.startTime);
     return slotDate >= startDate && slotDate <= maxEndDate;
   });
+  console.log(`[DEBUG] After date filtering: ${filteredByDateRange.length} slots`);
   
   // Auto-maintain slots: Check if we have slots for at least 25 days ahead
   // If not, automatically generate slots to maintain 30 days coverage
@@ -86,16 +93,24 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
   // If we have less than 25 days of slots ahead, auto-generate to maintain 30 days
   // Note: Auto-generation uses the facility owner's ID (from court.facilityId)
   // This is safe because we're only generating slots, not modifying existing ones
+  console.log(`[DEBUG] Days ahead: ${daysAhead}, threshold: 25`);
   if (daysAhead < 25) {
+    console.log(`[DEBUG] Auto-generation triggered for court ${courtId}`);
     try {
       // Get facility to check if it has opening hours and get owner ID
       const facility = await Facility.findById(court.facilityId);
-      if (facility && facility.openingHours && Object.keys(facility.openingHours).length > 0) {
+      if (!facility) {
+        console.log(`[DEBUG] Facility ${court.facilityId} not found`);
+      } else if (!facility.openingHours || Object.keys(facility.openingHours).length === 0) {
+        console.log(`[DEBUG] Facility ${court.facilityId} has no opening hours configured`);
+      } else {
+        console.log(`[DEBUG] Facility ${court.facilityId} found, ownerId=${facility.ownerId}, openingHours keys: ${Object.keys(facility.openingHours).join(', ')}`);
         // Auto-generate slots using facility owner ID
         // Generate only 0.5-hour slots as the base unit
         // This allows any duration in 0.5-hour increments by combining consecutive slots:
         // - 0.5h = 1 slot, 1h = 2 slots, 1.5h = 3 slots, 2h = 4 slots, etc.
-        await generateSlotsForCourt(courtId, facility.ownerId, 0.5);
+        const generationResult = await generateSlotsForCourt(courtId, facility.ownerId, 0.5);
+        console.log(`[DEBUG] Auto-generation result: ${generationResult.count} slots generated`);
         
         // Re-fetch slots after generation
         const updatedSlots = await TimeSlot.getAvailableSlotsNext30Days(courtId, startDate, endDate);
@@ -164,7 +179,8 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
       // If auto-generation fails, continue with existing slots
       // Don't throw error - just log it and return what we have
       // This ensures the API doesn't break if auto-generation fails
-      console.warn(`Auto-generation of slots for court ${courtId} failed:`, error.message);
+      console.error(`[DEBUG] Auto-generation of slots for court ${courtId} failed:`, error.message);
+      console.error(`[DEBUG] Error stack:`, error.stack);
     }
   }
   
@@ -177,6 +193,8 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
   const tolerance = 60 * 1000; // 1 minute tolerance for time comparisons
   const requiredSlotsCount = Math.round(durationHours * 2); // Number of 0.5-hour slots needed
   
+  console.log(`[DEBUG] Duration filtering: durationHours=${durationHours}, requiredSlotsCount=${requiredSlotsCount}, filteredByDateRange.length=${filteredByDateRange.length}`);
+  
   // Sort slots by start time to ensure we process them in order
   const sortedSlots = [...filteredByDateRange].sort((a, b) => 
     new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
@@ -185,14 +203,20 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
   const resultSlots = [];
   
   // Find consecutive 0.5-hour slots that add up to the requested duration
+  let slotsChecked = 0;
+  let slotsSkippedNotHalfHour = 0;
+  let consecutiveGroupsFound = 0;
+  
   for (let i = 0; i <= sortedSlots.length - requiredSlotsCount; i++) {
     const firstSlot = sortedSlots[i];
     const firstSlotStart = new Date(firstSlot.startTime).getTime();
     const firstSlotEnd = new Date(firstSlot.endTime).getTime();
     const firstSlotDuration = firstSlotEnd - firstSlotStart;
+    slotsChecked++;
     
     // Check if first slot is approximately 0.5 hours (base unit)
     if (Math.abs(firstSlotDuration - halfHourMs) > tolerance) {
+      slotsSkippedNotHalfHour++;
       continue; // Skip slots that aren't 0.5-hour base units
     }
     
@@ -222,6 +246,7 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
     
     // If we have exactly the required number of consecutive slots, add the first slot to results
     if (consecutiveSlots.length === requiredSlotsCount) {
+      consecutiveGroupsFound++;
       const totalDuration = currentEndTime - firstSlotStart;
       
       // Verify total duration matches requested duration (with tolerance)
@@ -232,6 +257,8 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
       }
     }
   }
+  
+  console.log(`[DEBUG] Slot matching: checked=${slotsChecked}, skippedNotHalfHour=${slotsSkippedNotHalfHour}, consecutiveGroupsFound=${consecutiveGroupsFound}, finalResults=${resultSlots.length}`);
   
   return resultSlots;
 };

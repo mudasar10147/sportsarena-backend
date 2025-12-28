@@ -11,6 +11,10 @@ const Facility = require('../models/Facility');
 /**
  * Get available time slots for a court (up to 30 days) filtered by duration
  * Automatically maintains slots for the next 30 days (auto-generates if needed)
+ * 
+ * Note: Slots are generated as 0.5-hour base units. Any duration in 0.5-hour increments
+ * (0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, etc.) can be created by combining consecutive 0.5-hour slots.
+ * 
  * @param {number} courtId - Court ID
  * @param {Date} [fromDate] - Start date (defaults to now)
  * @param {number} [durationHours=1] - Duration in hours (default: 1 hour, minimum: 0.5 hours)
@@ -88,24 +92,73 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
       const facility = await Facility.findById(court.facilityId);
       if (facility && facility.openingHours && Object.keys(facility.openingHours).length > 0) {
         // Auto-generate slots using facility owner ID
-        // Use the requested duration to generate matching slots
-        await generateSlotsForCourt(courtId, facility.ownerId, durationHours);
+        // Generate only 0.5-hour slots as the base unit
+        // This allows any duration in 0.5-hour increments by combining consecutive slots:
+        // - 0.5h = 1 slot, 1h = 2 slots, 1.5h = 3 slots, 2h = 4 slots, etc.
+        await generateSlotsForCourt(courtId, facility.ownerId, 0.5);
         
         // Re-fetch slots after generation
         const updatedSlots = await TimeSlot.getAvailableSlotsNext30Days(courtId, startDate, endDate);
         
-        // Filter by date range and duration
+        // Filter by date range
+        const filteredByDate = updatedSlots.filter(slot => {
+          const slotDate = new Date(slot.startTime);
+          return slotDate >= startDate && slotDate <= maxEndDate;
+        });
+        
+        // Apply duration filtering (same logic as main function below)
+        // All slots are 0.5-hour base units, so combine consecutive slots
         const durationMs = durationHours * 60 * 60 * 1000;
-        return updatedSlots
-          .filter(slot => {
-            const slotDate = new Date(slot.startTime);
-            return slotDate >= startDate && slotDate <= maxEndDate;
-          })
-          .filter(slot => {
-            const slotDuration = slot.endTime.getTime() - slot.startTime.getTime();
-            const tolerance = 60 * 1000; // 1 minute tolerance
-            return Math.abs(slotDuration - durationMs) < tolerance;
-          });
+        const halfHourMs = 0.5 * 60 * 60 * 1000;
+        const tolerance = 60 * 1000;
+        const requiredSlotsCount = Math.round(durationHours * 2);
+        
+        const sortedSlots = [...filteredByDate].sort((a, b) => 
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+        
+        const resultSlots = [];
+        
+        for (let i = 0; i <= sortedSlots.length - requiredSlotsCount; i++) {
+          const firstSlot = sortedSlots[i];
+          const firstSlotStart = new Date(firstSlot.startTime).getTime();
+          const firstSlotEnd = new Date(firstSlot.endTime).getTime();
+          const firstSlotDuration = firstSlotEnd - firstSlotStart;
+          
+          if (Math.abs(firstSlotDuration - halfHourMs) > tolerance) {
+            continue;
+          }
+          
+          let consecutiveSlots = [firstSlot];
+          let currentEndTime = firstSlotEnd;
+          
+          for (let j = i + 1; j < sortedSlots.length && consecutiveSlots.length < requiredSlotsCount; j++) {
+            const nextSlot = sortedSlots[j];
+            const nextSlotStart = new Date(nextSlot.startTime).getTime();
+            const nextSlotEnd = new Date(nextSlot.endTime).getTime();
+            const nextSlotDuration = nextSlotEnd - nextSlotStart;
+            
+            if (Math.abs(nextSlotDuration - halfHourMs) > tolerance) {
+              break;
+            }
+            
+            if (Math.abs(nextSlotStart - currentEndTime) < tolerance) {
+              consecutiveSlots.push(nextSlot);
+              currentEndTime = nextSlotEnd;
+            } else {
+              break;
+            }
+          }
+          
+          if (consecutiveSlots.length === requiredSlotsCount) {
+            const totalDuration = currentEndTime - firstSlotStart;
+            if (Math.abs(totalDuration - durationMs) < tolerance) {
+              resultSlots.push(firstSlot);
+            }
+          }
+        }
+        
+        return resultSlots;
       }
     } catch (error) {
       // If auto-generation fails, continue with existing slots
@@ -115,16 +168,72 @@ const getAvailableSlotsForCourt = async (courtId, fromDate = null, durationHours
     }
   }
   
-  // Filter slots by duration (in milliseconds)
+  // Handle all duration types: 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, etc.
+  // Strategy: Since all slots are 0.5-hour base units, we combine consecutive slots
+  // to match the requested duration. For example:
+  // - 0.5h = 1 slot, 1h = 2 slots, 1.5h = 3 slots, 2h = 4 slots, etc.
   const durationMs = durationHours * 60 * 60 * 1000;
-  const filteredSlots = filteredByDateRange.filter(slot => {
-    const slotDuration = slot.endTime.getTime() - slot.startTime.getTime();
-    // Allow small tolerance (1 minute) for floating point precision
-    const tolerance = 60 * 1000; // 1 minute in milliseconds
-    return Math.abs(slotDuration - durationMs) < tolerance;
-  });
-
-  return filteredSlots;
+  const halfHourMs = 0.5 * 60 * 60 * 1000; // 0.5 hour in milliseconds
+  const tolerance = 60 * 1000; // 1 minute tolerance for time comparisons
+  const requiredSlotsCount = Math.round(durationHours * 2); // Number of 0.5-hour slots needed
+  
+  // Sort slots by start time to ensure we process them in order
+  const sortedSlots = [...filteredByDateRange].sort((a, b) => 
+    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+  );
+  
+  const resultSlots = [];
+  
+  // Find consecutive 0.5-hour slots that add up to the requested duration
+  for (let i = 0; i <= sortedSlots.length - requiredSlotsCount; i++) {
+    const firstSlot = sortedSlots[i];
+    const firstSlotStart = new Date(firstSlot.startTime).getTime();
+    const firstSlotEnd = new Date(firstSlot.endTime).getTime();
+    const firstSlotDuration = firstSlotEnd - firstSlotStart;
+    
+    // Check if first slot is approximately 0.5 hours (base unit)
+    if (Math.abs(firstSlotDuration - halfHourMs) > tolerance) {
+      continue; // Skip slots that aren't 0.5-hour base units
+    }
+    
+    // Try to find the required number of consecutive 0.5-hour slots
+    let consecutiveSlots = [firstSlot];
+    let currentEndTime = firstSlotEnd;
+    
+    for (let j = i + 1; j < sortedSlots.length && consecutiveSlots.length < requiredSlotsCount; j++) {
+      const nextSlot = sortedSlots[j];
+      const nextSlotStart = new Date(nextSlot.startTime).getTime();
+      const nextSlotEnd = new Date(nextSlot.endTime).getTime();
+      const nextSlotDuration = nextSlotEnd - nextSlotStart;
+      
+      // Check if next slot is approximately 0.5 hours
+      if (Math.abs(nextSlotDuration - halfHourMs) > tolerance) {
+        break; // Not a 0.5-hour slot, can't form consecutive group
+      }
+      
+      // Check if next slot starts exactly when current slot ends (consecutive)
+      if (Math.abs(nextSlotStart - currentEndTime) < tolerance) {
+        consecutiveSlots.push(nextSlot);
+        currentEndTime = nextSlotEnd;
+      } else {
+        break; // Not consecutive, can't form a combination
+      }
+    }
+    
+    // If we have exactly the required number of consecutive slots, add the first slot to results
+    if (consecutiveSlots.length === requiredSlotsCount) {
+      const totalDuration = currentEndTime - firstSlotStart;
+      
+      // Verify total duration matches requested duration (with tolerance)
+      if (Math.abs(totalDuration - durationMs) < tolerance) {
+        // Return the first slot of the group (representing the booking start)
+        // The client can use this to book all consecutive slots
+        resultSlots.push(firstSlot);
+      }
+    }
+  }
+  
+  return resultSlots;
 };
 
 /**

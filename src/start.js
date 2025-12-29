@@ -22,7 +22,6 @@ const migrationFiles = [
   '003_create_sports_table.sql',
   '004_create_facility_sports_table.sql',
   '005_create_courts_table.sql',
-  '006_create_time_slots_table.sql',
   '007_create_bookings_table.sql',
   '008_create_payment_transactions_table.sql',
   '010_add_platform_admin_role.sql',
@@ -30,7 +29,14 @@ const migrationFiles = [
   '012_create_images_table.sql',
   '013_add_upload_fields_to_images.sql',
   '014_add_moderation_and_soft_delete.sql',
-  '015_add_google_auth_support.sql'
+  '015_add_google_auth_support.sql',
+  '016_add_time_normalization_helpers.sql',
+  '017_create_court_availability_rules.sql',
+  '018_create_booking_policies.sql',
+  '019_create_blocked_time_ranges.sql',
+  '020_update_bookings_table_structure.sql',
+  '021_add_booking_expiration.sql',
+  '022_add_pending_expiration_to_policies.sql'
 ];
 
 /**

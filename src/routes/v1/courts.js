@@ -10,26 +10,41 @@
  * - GET    /facilities/:id/courts - List all courts for a facility
  * - POST   /facilities/:id/courts - Add new court to facility
  * 
- * TimeSlot Routes (nested):
- * - GET    /courts/:id/timeslots - Get all available slots for a court (next 7 days)
- * - POST   /courts/:id/timeslots - Add a new slot manually (facility admin) - DEPRECATED: Use generate-slots instead
- * - POST   /courts/:id/generate-slots - Generate slots automatically based on opening hours (facility admin)
+ * Availability endpoints (rule-based system):
+ * - GET    /courts/:id/availability - Get availability for single date
+ * - GET    /courts/:id/availability/range - Get availability for date range
+ * - GET    /courts/:id/availability/slots - Get duration-based slots
+ * 
+ * Availability rules management endpoints (admin):
+ * - GET    /courts/:id/availability/rules - List availability rules
+ * - POST   /courts/:id/availability/rules - Create availability rule
+ * - PUT    /courts/:id/availability/rules/:ruleId - Update availability rule
+ * - DELETE /courts/:id/availability/rules/:ruleId - Delete availability rule
  */
 
 const express = require('express');
 const router = express.Router();
 const courtController = require('../../controllers/courtController');
-const timeSlotController = require('../../controllers/timeSlotController');
+const availabilityController = require('../../controllers/availabilityController');
+const availabilityRuleController = require('../../controllers/availabilityRuleController');
 const { authenticate } = require('../../middleware/auth');
 const { requireFacilityAdmin } = require('../../middleware/authorization');
 
-// Nested TimeSlot routes (must come before /:id route)
-router.get('/:id/timeslots', timeSlotController.getCourtTimeSlots);
-router.post('/:id/generate-slots', authenticate, requireFacilityAdmin, timeSlotController.generateSlotsForCourt);
-router.post('/:id/timeslots', authenticate, requireFacilityAdmin, timeSlotController.createTimeSlot);
-
 // Protected route (authentication and facility_admin role required)
 router.put('/:id', authenticate, requireFacilityAdmin, courtController.updateCourt);
+
+// Availability rules management routes (protected - admin only)
+// IMPORTANT: More specific routes must come before less specific ones
+router.get('/:id/availability/rules', authenticate, requireFacilityAdmin, availabilityRuleController.getAvailabilityRules);
+router.post('/:id/availability/rules', authenticate, requireFacilityAdmin, availabilityRuleController.createAvailabilityRule);
+router.put('/:id/availability/rules/:ruleId', authenticate, requireFacilityAdmin, availabilityRuleController.updateAvailabilityRule);
+router.delete('/:id/availability/rules/:ruleId', authenticate, requireFacilityAdmin, availabilityRuleController.deleteAvailabilityRule);
+
+// Availability routes (public - no authentication required)
+// IMPORTANT: More specific routes must come before less specific ones
+router.get('/:id/availability/range', availabilityController.getAvailabilityRange);
+router.get('/:id/availability/slots', availabilityController.getAvailabilitySlots);
+router.get('/:id/availability', availabilityController.getAvailability);
 
 module.exports = router;
 

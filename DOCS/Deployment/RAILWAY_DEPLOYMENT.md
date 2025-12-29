@@ -231,7 +231,6 @@ const migrationFiles = [
   '003_create_sports_table.sql',
   '004_create_facility_sports_table.sql',
   '005_create_courts_table.sql',
-  '006_create_time_slots_table.sql',
   '007_create_bookings_table.sql',
   '008_create_payment_transactions_table.sql',
   '010_add_platform_admin_role.sql',

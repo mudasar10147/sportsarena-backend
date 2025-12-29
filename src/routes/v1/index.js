@@ -37,7 +37,6 @@ const userRoutes = require('./users');
 const facilityRoutes = require('./facilities');
 const sportRoutes = require('./sports');
 const courtRoutes = require('./courts');
-const timeSlotRoutes = require('./timeslots');
 const bookingRoutes = require('./bookings');
 const imageRoutes = require('./images');
 
@@ -46,7 +45,6 @@ router.use('/users', userRoutes);
 router.use('/facilities', facilityRoutes);
 router.use('/sports', sportRoutes);
 router.use('/courts', courtRoutes);
-router.use('/timeslots', timeSlotRoutes);
 router.use('/bookings', bookingRoutes);
 router.use('/images', imageRoutes);
  

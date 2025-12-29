@@ -24,7 +24,6 @@ const router = express.Router();
 const facilityController = require('../../controllers/facilityController');
 const facilitySportController = require('../../controllers/facilitySportController');
 const courtController = require('../../controllers/courtController');
-const timeSlotController = require('../../controllers/timeSlotController');
 const bookingController = require('../../controllers/bookingController');
 const { authenticate } = require('../../middleware/auth');
 const { requireFacilityAdmin } = require('../../middleware/authorization');
@@ -40,9 +39,6 @@ router.post('/:id/sports', authenticate, requireFacilityAdmin, facilitySportCont
 // Nested Court routes (must come before /:id route)
 router.get('/:id/courts', courtController.getFacilityCourts);
 router.post('/:id/courts', authenticate, requireFacilityAdmin, courtController.createCourt);
-
-// TimeSlot generation route (must come before /:id route)
-router.post('/:id/generate-slots', authenticate, requireFacilityAdmin, timeSlotController.generateSlotsForAllCourts);
 
 // Booking management routes (must come before /:id route)
 router.get('/:id/bookings/pending', authenticate, requireFacilityAdmin, bookingController.getPendingBookingsForFacility);

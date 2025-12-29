@@ -1067,9 +1067,9 @@ Example:
 ## Related Documentation
 
 - [API Architecture](./API_ARCHITECTURE.md) - Overall API design
-- [MVP Full Roadmap](./MVP_FULL_ROADMAP.md) - Complete MVP implementation plan
+- [MVP Full Roadmap](../Concept/MVP_FULL_ROADMAP.md) - Complete MVP implementation plan
 - [Booking Model](../MODELS/Booking.md) - Database model documentation
-- [TimeSlot API Guide](./TIMESLOT_API_GUIDE.md) - Time slot endpoints
+- [Rule-Based Availability Architecture](../Architecture/RULE_BASED_AVAILABILITY_ARCHITECTURE.md) - Availability system (replaces timeslot system)
 - [User API Guide](./USER_API_GUIDE.md) - User endpoints (includes GET /users/bookings)
 - [Court API Guide](./COURT_API_GUIDE.md) - Court endpoints
 

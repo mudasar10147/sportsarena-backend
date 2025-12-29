@@ -7,7 +7,74 @@
 const Court = require('../models/Court');
 const Facility = require('../models/Facility');
 const Sport = require('../models/Sport');
-const timeSlotService = require('./timeSlotService');
+const { parseTimeString } = require('../utils/timeNormalization');
+
+/**
+ * Map day name to day of week number
+ * @private
+ * @param {string} dayName - Day name (lowercase, e.g., 'monday', 'tuesday')
+ * @returns {number|null} Day of week (0=Sunday, 1=Monday, ..., 6=Saturday) or null if invalid
+ */
+const mapDayNameToNumber = (dayName) => {
+  const dayMap = {
+    'sunday': 0,
+    'monday': 1,
+    'tuesday': 2,
+    'wednesday': 3,
+    'thursday': 4,
+    'friday': 5,
+    'saturday': 6
+  };
+  
+  const normalizedDayName = dayName.toLowerCase();
+  return dayMap[normalizedDayName] !== undefined ? dayMap[normalizedDayName] : null;
+};
+
+/**
+ * Generate availability rules from facility opening hours
+ * @private
+ * @param {Object} openingHours - Facility opening hours object
+ * @returns {Array<Object>} Array of rule objects ready for insertion
+ */
+const generateAvailabilityRulesFromOpeningHours = (openingHours) => {
+  const rules = [];
+
+  if (!openingHours || typeof openingHours !== 'object') {
+    return rules;
+  }
+
+  // Iterate through each day in opening hours
+  for (const [dayName, hours] of Object.entries(openingHours)) {
+    // Skip if day is null or hours object is invalid
+    if (!hours || typeof hours !== 'object' || !hours.open || !hours.close) {
+      continue;
+    }
+
+    const dayOfWeek = mapDayNameToNumber(dayName);
+    if (dayOfWeek === null) {
+      // Invalid day name, skip
+      continue;
+    }
+
+    try {
+      const startTime = parseTimeString(hours.open);
+      const endTime = parseTimeString(hours.close);
+
+      rules.push({
+        dayOfWeek,
+        startTime,
+        endTime,
+        isActive: true
+      });
+    } catch (error) {
+      // Invalid time format, skip this day
+      console.warn(`Skipping invalid opening hours for ${dayName}: ${error.message}`);
+      continue;
+    }
+  }
+
+  return rules;
+};
 
 /**
  * Get all courts for a facility
@@ -94,15 +161,16 @@ const createCourt = async (facilityId, courtData, userId) => {
     isIndoor: isIndoor !== undefined ? isIndoor : true
   });
 
-  // Automatically generate time slots if facility has opening hours configured
-  // This happens in the background - don't fail court creation if slot generation fails
+  // Automatically create availability rules based on facility opening hours
   if (facility.openingHours && Object.keys(facility.openingHours).length > 0) {
-    try {
-      await timeSlotService.generateSlotsForCourt(court.id, userId, 1); // Default: 1-hour slots
-      // Note: We don't wait for this or throw errors - slots can be generated later if needed
-    } catch (error) {
-      // Log error but don't fail court creation
-      console.warn(`Failed to auto-generate slots for court ${court.id}:`, error.message);
+    const rules = generateAvailabilityRulesFromOpeningHours(facility.openingHours);
+    if (rules.length > 0) {
+      try {
+        await Court.createAvailabilityRules(court.id, rules);
+      } catch (error) {
+        // Log error but don't fail court creation if rule creation fails
+        console.error(`Failed to create availability rules for court ${court.id}:`, error.message);
+      }
     }
   }
 

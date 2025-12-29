@@ -21,23 +21,8 @@ const {
  */
 const createBooking = async (req, res, next) => {
   try {
-    const userId = req.userId;
-    const { timeSlotId } = req.body;
-
-    // Validation
-    if (!timeSlotId) {
-      return sendValidationError(res, 'Time slot ID is required');
-    }
-
-    const parsedTimeSlotId = parseInt(timeSlotId, 10);
-    if (isNaN(parsedTimeSlotId)) {
-      return sendValidationError(res, 'Invalid time slot ID');
-    }
-
-    // Create booking (with slot locking to prevent double booking)
-    const booking = await bookingService.createBooking(userId, parsedTimeSlotId);
-
-    return sendCreated(res, booking, 'Booking created successfully');
+    // Time slots have been removed - will be recreated from scratch
+    return sendValidationError(res, 'Time slots have been removed. Please recreate time slots from scratch.');
   } catch (error) {
     next(error);
   }

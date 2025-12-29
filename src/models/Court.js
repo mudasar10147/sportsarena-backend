@@ -245,6 +245,175 @@ class Court {
   }
 
   /**
+   * Create availability rules for a court
+   * @param {number} courtId - Court ID
+   * @param {Array<Object>} rules - Array of rule objects with dayOfWeek, startTime, endTime
+   * @param {number} rules[].dayOfWeek - Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+   * @param {number} rules[].startTime - Start time in minutes since midnight
+   * @param {number} rules[].endTime - End time in minutes since midnight
+   * @param {boolean} [rules[].isActive=true] - Whether rule is active
+   * @returns {Promise<Array>} Array of created rule objects
+   */
+  static async createAvailabilityRules(courtId, rules) {
+    if (!rules || rules.length === 0) {
+      return [];
+    }
+
+    // Build VALUES clause for bulk insert
+    const values = [];
+    const placeholders = [];
+    let paramCount = 1;
+
+    for (const rule of rules) {
+      const dayOfWeek = rule.dayOfWeek;
+      const startTime = rule.startTime;
+      const endTime = rule.endTime;
+      const isActive = rule.isActive !== undefined ? rule.isActive : true;
+      const pricePerHourOverride = rule.pricePerHourOverride !== undefined ? rule.pricePerHourOverride : null;
+
+      placeholders.push(`($${paramCount}, $${paramCount + 1}, $${paramCount + 2}, $${paramCount + 3}, $${paramCount + 4}, $${paramCount + 5})`);
+      values.push(courtId, dayOfWeek, startTime, endTime, isActive, pricePerHourOverride);
+      paramCount += 6;
+    }
+
+    const query = `
+      INSERT INTO court_availability_rules (court_id, day_of_week, start_time, end_time, is_active, price_per_hour_override)
+      VALUES ${placeholders.join(', ')}
+      ON CONFLICT (court_id, day_of_week, start_time, end_time) DO NOTHING
+      RETURNING id, court_id, day_of_week, start_time, end_time, is_active, price_per_hour_override, created_at, updated_at
+    `;
+
+    const result = await pool.query(query, values);
+    return result.rows.map(row => this._formatAvailabilityRule(row));
+  }
+
+  /**
+   * Find availability rules for a court
+   * @param {number} courtId - Court ID
+   * @param {Object} [options={}] - Query options
+   * @param {boolean} [options.isActive] - Filter by active status
+   * @returns {Promise<Array>} Array of availability rule objects
+   */
+  static async findAvailabilityRulesByCourtId(courtId, options = {}) {
+    const { isActive } = options;
+    
+    let query = `
+      SELECT id, court_id, day_of_week, start_time, end_time, is_active, price_per_hour_override, created_at, updated_at
+      FROM court_availability_rules
+      WHERE court_id = $1
+    `;
+    
+    const values = [courtId];
+    
+    if (isActive !== undefined) {
+      query += ` AND is_active = $2`;
+      values.push(isActive);
+    }
+    
+    query += ` ORDER BY day_of_week ASC, start_time ASC`;
+    
+    const result = await pool.query(query, values);
+    return result.rows.map(row => this._formatAvailabilityRule(row));
+  }
+
+  /**
+   * Find availability rule by ID
+   * @param {number} ruleId - Rule ID
+   * @returns {Promise<Object|null>} Availability rule object or null if not found
+   */
+  static async findAvailabilityRuleById(ruleId) {
+    const query = `
+      SELECT id, court_id, day_of_week, start_time, end_time, is_active, price_per_hour_override, created_at, updated_at
+      FROM court_availability_rules
+      WHERE id = $1
+    `;
+    
+    const result = await pool.query(query, [ruleId]);
+    return result.rows[0] ? this._formatAvailabilityRule(result.rows[0]) : null;
+  }
+
+  /**
+   * Update availability rule
+   * @param {number} ruleId - Rule ID
+   * @param {Object} updateData - Fields to update
+   * @returns {Promise<Object|null>} Updated rule object or null if not found
+   */
+  static async updateAvailabilityRule(ruleId, updateData) {
+    const allowedFields = ['day_of_week', 'start_time', 'end_time', 'is_active', 'price_per_hour_override'];
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    for (const [key, value] of Object.entries(updateData)) {
+      const dbField = key === 'dayOfWeek' ? 'day_of_week' :
+                     key === 'startTime' ? 'start_time' :
+                     key === 'endTime' ? 'end_time' :
+                     key === 'isActive' ? 'is_active' :
+                     key === 'pricePerHourOverride' ? 'price_per_hour_override' : key;
+
+      if (allowedFields.includes(dbField) && value !== undefined) {
+        updates.push(`${dbField} = $${paramCount}`);
+        values.push(value);
+        paramCount++;
+      }
+    }
+
+    if (updates.length === 0) {
+      return await this.findAvailabilityRuleById(ruleId);
+    }
+
+    // Add updated_at
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(ruleId);
+
+    const query = `
+      UPDATE court_availability_rules
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING id, court_id, day_of_week, start_time, end_time, is_active, price_per_hour_override, created_at, updated_at
+    `;
+
+    const result = await pool.query(query, values);
+    return result.rows[0] ? this._formatAvailabilityRule(result.rows[0]) : null;
+  }
+
+  /**
+   * Delete availability rule
+   * @param {number} ruleId - Rule ID
+   * @returns {Promise<boolean>} True if deleted successfully
+   */
+  static async deleteAvailabilityRule(ruleId) {
+    const query = `
+      DELETE FROM court_availability_rules
+      WHERE id = $1
+    `;
+    const result = await pool.query(query, [ruleId]);
+    return result.rowCount > 0;
+  }
+
+  /**
+   * Format availability rule object - normalize field names
+   * @private
+   * @param {Object} row - Raw database row
+   * @returns {Object} Formatted availability rule object
+   */
+  static _formatAvailabilityRule(row) {
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      courtId: row.court_id,
+      dayOfWeek: row.day_of_week,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      isActive: row.is_active,
+      pricePerHourOverride: row.price_per_hour_override ? parseFloat(row.price_per_hour_override) : null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  /**
    * Delete court (soft delete by setting is_active to false)
    * @param {number} courtId - Court ID
    * @returns {Promise<boolean>} True if deleted successfully

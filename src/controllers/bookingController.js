@@ -59,9 +59,14 @@ const createBooking = async (req, res, next) => {
       return sendValidationError(res, 'Invalid date provided');
     }
 
-    // Convert times to minutes since midnight
-    const startTimeMinutes = timeNorm.toMinutesSinceMidnight(startTime);
-    const endTimeMinutes = timeNorm.toMinutesSinceMidnight(endTime);
+    // Convert time strings (HH:MM) to minutes since midnight
+    let startTimeMinutes, endTimeMinutes;
+    try {
+      startTimeMinutes = timeNorm.parseTimeString(startTime);
+      endTimeMinutes = timeNorm.parseTimeString(endTime);
+    } catch (error) {
+      return sendValidationError(res, `Invalid time format: ${error.message}. Expected HH:MM format (e.g., 13:00)`);
+    }
 
     // Create booking using transaction-safe service
     const booking = await transactionSafeBookingService.createTransactionSafeBooking(

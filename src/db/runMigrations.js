@@ -32,7 +32,10 @@ const migrationFiles = [
   '019_create_blocked_time_ranges.sql',
   '020_update_bookings_table_structure.sql',
   '021_add_booking_expiration.sql',
-  '022_add_pending_expiration_to_policies.sql'
+  '022_add_pending_expiration_to_policies.sql',
+  '025_make_time_slot_id_nullable.sql',
+  '023_remove_time_slot_id_from_bookings.sql',
+  '024_add_payment_proof_to_bookings.sql'
 ];
 
 async function runMigrations() {

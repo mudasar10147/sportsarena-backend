@@ -43,6 +43,22 @@ const createBooking = async (req, res, next) => {
       return sendValidationError(res, 'Missing required fields: courtId, date, startTime, endTime');
     }
 
+    // Validate and parse date (YYYY-MM-DD format)
+    // Parse date string to avoid timezone issues
+    const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!dateMatch) {
+      return sendValidationError(res, 'Invalid date format. Expected YYYY-MM-DD (e.g., 2025-12-31)');
+    }
+
+    // Create date in local timezone to avoid timezone conversion issues
+    const [year, month, day] = dateMatch.slice(1).map(Number);
+    const bookingDate = new Date(year, month - 1, day); // month is 0-indexed
+    
+    // Validate date is valid
+    if (isNaN(bookingDate.getTime())) {
+      return sendValidationError(res, 'Invalid date provided');
+    }
+
     // Convert times to minutes since midnight
     const startTimeMinutes = timeNorm.toMinutesSinceMidnight(startTime);
     const endTimeMinutes = timeNorm.toMinutesSinceMidnight(endTime);
@@ -51,7 +67,7 @@ const createBooking = async (req, res, next) => {
     const booking = await transactionSafeBookingService.createTransactionSafeBooking(
       userId,
       parseInt(courtId, 10),
-      new Date(date),
+      bookingDate,
       startTimeMinutes,
       endTimeMinutes,
       { paymentReference }

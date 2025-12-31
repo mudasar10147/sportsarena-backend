@@ -4,12 +4,14 @@
  * Following MVP_FULL_ROADMAP.md Step 2: Booking Routes
  * 
  * Endpoints:
- * - POST   /bookings              - Create a new booking (user) - status: pending
- * - GET    /bookings/:id          - Get booking details
- * - PUT    /bookings/:id/confirm  - Confirm a pending booking (DEPRECATED: Use accept/reject by facility owner)
- * - PUT    /bookings/:id/accept   - Accept a pending booking (facility owner only)
- * - PUT    /bookings/:id/reject   - Reject a pending booking (facility owner only)
- * - PUT    /bookings/:id/cancel   - Cancel a booking (if allowed by policy)
+ * - POST   /bookings                      - Create a new booking (user) - status: pending
+ * - GET    /bookings/:id                  - Get booking details
+ * - PUT    /bookings/:id/confirm          - Confirm a pending booking (DEPRECATED: Use accept/reject by facility owner)
+ * - PUT    /bookings/:id/accept           - Accept a pending booking (facility owner only)
+ * - PUT    /bookings/:id/reject           - Reject a pending booking (facility owner only)
+ * - PUT    /bookings/:id/cancel           - Cancel a booking (if allowed by policy)
+ * - PUT    /bookings/:id/payment-proof    - Upload payment proof image (user, booking owner only)
+ * - DELETE /bookings/:id/payment-proof    - Remove payment proof image (user, booking owner only)
  * 
  * Note: GET /users/bookings is already implemented in user routes
  * Note: GET /facilities/:id/bookings/pending is for facility owners to view pending bookings
@@ -31,6 +33,8 @@ router.put('/:id/confirm', authenticate, bookingController.confirmBooking); // D
 router.put('/:id/accept', authenticate, requireFacilityAdmin, bookingController.acceptBooking);
 router.put('/:id/reject', authenticate, requireFacilityAdmin, bookingController.rejectBooking);
 router.put('/:id/cancel', authenticate, bookingController.cancelBooking);
+router.put('/:id/payment-proof', authenticate, bookingController.uploadPaymentProof);
+router.delete('/:id/payment-proof', authenticate, bookingController.removePaymentProof);
 
 module.exports = router;
 

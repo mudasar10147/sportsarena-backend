@@ -38,3 +38,4 @@ FROM court_availability_rules
 WHERE court_id = 1
 ORDER BY day_of_week, start_time;
 
+

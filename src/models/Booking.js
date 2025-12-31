@@ -2,34 +2,9 @@ const { pool } = require('../config/database');
 
 class Booking {
   /**
-   * Create a new booking
-   * @param {Object} bookingData - Booking data object
-   * @param {number} bookingData.userId - User ID
-   * @param {number} bookingData.timeSlotId - Time slot ID
-   * @param {number} bookingData.finalPrice - Final price in PKR
-   * @param {string} [bookingData.bookingStatus='pending'] - Booking status
-   * @param {string} [bookingData.paymentReference] - Payment transaction reference
-   * @returns {Promise<Object>} Created booking object
+   * Note: Booking creation is handled by transactionSafeBookingService
+   * This model provides read and update operations only
    */
-  static async create(bookingData) {
-    const {
-      userId,
-      timeSlotId,
-      finalPrice,
-      bookingStatus = 'pending',
-      paymentReference = null
-    } = bookingData;
-
-    const query = `
-      INSERT INTO bookings (user_id, time_slot_id, final_price, booking_status, payment_reference)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
-    `;
-
-    const values = [userId, timeSlotId, finalPrice, bookingStatus, paymentReference];
-    const result = await pool.query(query, values);
-    return this._formatBooking(result.rows[0]);
-  }
 
   /**
    * Find booking by ID
@@ -38,7 +13,8 @@ class Booking {
    */
   static async findById(bookingId) {
     const query = `
-      SELECT id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      SELECT id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+             payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
       FROM bookings
       WHERE id = $1
     `;
@@ -70,7 +46,8 @@ class Booking {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const query = `
-      SELECT id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      SELECT id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+             payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
       FROM bookings
       ${whereClause}
       ORDER BY created_at DESC
@@ -98,30 +75,14 @@ class Booking {
   }
 
   /**
-   * Find booking by time slot ID
-   * @param {number} timeSlotId - Time slot ID
-   * @returns {Promise<Object|null>} Booking object or null if not found
-   */
-  static async findByTimeSlotId(timeSlotId) {
-    const query = `
-      SELECT id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
-      FROM bookings
-      WHERE time_slot_id = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    const result = await pool.query(query, [timeSlotId]);
-    return result.rows[0] ? this._formatBooking(result.rows[0]) : null;
-  }
-
-  /**
    * Find booking by payment reference
    * @param {string} paymentReference - Payment reference/transaction ID
    * @returns {Promise<Object|null>} Booking object or null if not found
    */
   static async findByPaymentReference(paymentReference) {
     const query = `
-      SELECT id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      SELECT id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+             payment_reference, cancellation_reason, expires_at, created_at, updated_at
       FROM bookings
       WHERE payment_reference = $1
     `;
@@ -159,7 +120,8 @@ class Booking {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const query = `
-      SELECT id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      SELECT id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+             payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
       FROM bookings
       ${whereClause}
       ORDER BY created_at DESC
@@ -193,7 +155,7 @@ class Booking {
    * @returns {Promise<Object|null>} Updated booking object or null if not found
    */
   static async update(bookingId, updateData) {
-    const allowedFields = ['booking_status', 'payment_reference', 'cancellation_reason'];
+    const allowedFields = ['booking_status', 'payment_reference', 'payment_proof_image_id', 'cancellation_reason'];
     const updates = [];
     const values = [];
     let paramCount = 1;
@@ -201,6 +163,7 @@ class Booking {
     for (const [key, value] of Object.entries(updateData)) {
       const dbField = key === 'bookingStatus' ? 'booking_status' :
                      key === 'paymentReference' ? 'payment_reference' :
+                     key === 'paymentProofImageId' ? 'payment_proof_image_id' :
                      key === 'cancellationReason' ? 'cancellation_reason' : key;
 
       if (allowedFields.includes(dbField) && value !== undefined) {
@@ -222,7 +185,8 @@ class Booking {
       UPDATE bookings
       SET ${updates.join(', ')}
       WHERE id = $${paramCount}
-      RETURNING id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      RETURNING id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+                 payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
     `;
 
     const result = await pool.query(query, values);
@@ -238,9 +202,10 @@ class Booking {
   static async confirm(bookingId, paymentReference) {
     const query = `
       UPDATE bookings
-      SET booking_status = 'confirmed', payment_reference = $1, updated_at = CURRENT_TIMESTAMP
+      SET booking_status = 'confirmed', payment_reference = $1, expires_at = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
-      RETURNING id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      RETURNING id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+                 payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
     `;
     const result = await pool.query(query, [paymentReference, bookingId]);
     return result.rows[0] ? this._formatBooking(result.rows[0]) : null;
@@ -257,7 +222,8 @@ class Booking {
       UPDATE bookings
       SET booking_status = 'cancelled', cancellation_reason = $1, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
-      RETURNING id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      RETURNING id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+                 payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
     `;
     const result = await pool.query(query, [cancellationReason, bookingId]);
     return result.rows[0] ? this._formatBooking(result.rows[0]) : null;
@@ -272,9 +238,10 @@ class Booking {
   static async accept(bookingId, paymentReference = null) {
     const query = `
       UPDATE bookings
-      SET booking_status = 'confirmed', payment_reference = $1, updated_at = CURRENT_TIMESTAMP
+      SET booking_status = 'confirmed', payment_reference = $1, expires_at = NULL, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
-      RETURNING id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      RETURNING id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+                 payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
     `;
     const result = await pool.query(query, [paymentReference, bookingId]);
     return result.rows[0] ? this._formatBooking(result.rows[0]) : null;
@@ -291,7 +258,8 @@ class Booking {
       UPDATE bookings
       SET booking_status = 'rejected', cancellation_reason = $1, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
-      RETURNING id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      RETURNING id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+                 payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
     `;
     const result = await pool.query(query, [rejectionReason, bookingId]);
     return result.rows[0] ? this._formatBooking(result.rows[0]) : null;
@@ -307,7 +275,8 @@ class Booking {
       UPDATE bookings
       SET booking_status = 'completed', updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
-      RETURNING id, user_id, time_slot_id, final_price, booking_status, payment_reference, cancellation_reason, created_at, updated_at
+      RETURNING id, user_id, court_id, booking_date, start_time, end_time, final_price, booking_status, 
+                 payment_reference, payment_proof_image_id, cancellation_reason, expires_at, created_at, updated_at
     `;
     const result = await pool.query(query, [bookingId]);
     return result.rows[0] ? this._formatBooking(result.rows[0]) : null;
@@ -325,11 +294,18 @@ class Booking {
     return {
       id: row.id,
       userId: row.user_id,
-      timeSlotId: row.time_slot_id,
+      courtId: row.court_id,
+      bookingDate: row.booking_date ? new Date(row.booking_date) : null,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      startTimeMinutes: row.start_time,
+      endTimeMinutes: row.end_time,
       finalPrice: parseFloat(row.final_price),
       bookingStatus: row.booking_status,
       paymentReference: row.payment_reference,
+      paymentProofImageId: row.payment_proof_image_id,
       cancellationReason: row.cancellation_reason,
+      expiresAt: row.expires_at ? new Date(row.expires_at) : null,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     };

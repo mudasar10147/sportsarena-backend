@@ -11,40 +11,9 @@ const Facility = require('../models/Facility');
 const { pool } = require('../config/database');
 
 /**
- * Calculate booking price based on time slot duration and court price
- * @param {Object} timeSlot - Time slot object
- * @param {Object} court - Court object
- * @returns {number} Final price in PKR
- * @deprecated Time slots removed - will be recreated from scratch
+ * Note: Booking creation is handled by transactionSafeBookingService
+ * This service provides booking management operations only
  */
-const calculateBookingPrice = (timeSlot, court) => {
-  const startTime = new Date(timeSlot.startTime);
-  const endTime = new Date(timeSlot.endTime);
-  
-  // Calculate duration in hours
-  const durationMs = endTime - startTime;
-  const durationHours = durationMs / (1000 * 60 * 60);
-  
-  // Calculate price: court price per hour * duration
-  const price = court.pricePerHour * durationHours;
-  
-  return Math.round(price * 100) / 100; // Round to 2 decimal places
-};
-
-/**
- * Create a new booking with slot locking to prevent double booking
- * @param {number} userId - User ID
- * @param {number} timeSlotId - Time slot ID
- * @returns {Promise<Object>} Created booking object
- * @throws {Error} If slot not available, validation fails, or booking fails
- * @deprecated Time slots removed - will be recreated from scratch
- */
-const createBooking = async (userId, timeSlotId) => {
-  const error = new Error('Time slots have been removed. Please recreate time slots from scratch.');
-  error.statusCode = 501;
-  error.errorCode = 'TIME_SLOTS_NOT_IMPLEMENTED';
-  throw error;
-};
 
 /**
  * Get booking details by ID
@@ -71,13 +40,7 @@ const getBookingDetails = async (bookingId, userId) => {
     throw error;
   }
 
-  // Time slots removed - will be recreated from scratch
-  // TODO: Reimplement when time slots are recreated
-  return {
-    ...booking,
-    timeSlot: null,
-    court: null
-  };
+  return booking;
 };
 
 /**
@@ -122,7 +85,6 @@ const cancelBooking = async (bookingId, userId, cancellationReason = null) => {
     throw error;
   }
 
-  // Time slots removed - will be recreated from scratch
   const client = await pool.connect();
 
   try {
@@ -130,8 +92,6 @@ const cancelBooking = async (bookingId, userId, cancellationReason = null) => {
 
     // Cancel booking
     const cancelledBooking = await Booking.cancel(bookingId, cancellationReason);
-
-    // TODO: Reimplement time slot status update when time slots are recreated
 
     await client.query('COMMIT');
 
@@ -193,9 +153,6 @@ const confirmBooking = async (bookingId, userId, paymentReference = null) => {
     throw error;
   }
 
-  // Time slots removed - will be recreated from scratch
-  // TODO: Reimplement time slot validation when time slots are recreated
-
   // Confirm booking
   const confirmedBooking = await Booking.confirm(bookingId, paymentReference);
 
@@ -232,12 +189,11 @@ const getPendingBookingsForFacility = async (facilityId, ownerId, options = {}) 
   }
 
   // Get pending bookings for this facility
-  // TODO: Reimplement when time slots are recreated
-  // Note: This query will fail until time slots are recreated
   const query = `
     SELECT 
-      b.id, b.user_id, b.time_slot_id, b.final_price, b.booking_status,
-      b.payment_reference, b.cancellation_reason, b.created_at, b.updated_at,
+      b.id, b.user_id, b.court_id, b.booking_date, b.start_time, b.end_time, 
+      b.final_price, b.booking_status, b.payment_reference, b.payment_proof_image_id,
+      b.cancellation_reason, b.expires_at, b.created_at, b.updated_at,
       c.id as court_id, c.name as court_name, c.price_per_hour,
       u.first_name, u.last_name, u.email, u.phone
     FROM bookings b
@@ -265,14 +221,20 @@ const getPendingBookingsForFacility = async (facilityId, ownerId, options = {}) 
   const bookings = result.rows.map(row => ({
     id: row.id,
     userId: row.user_id,
-    timeSlotId: row.time_slot_id,
+    courtId: row.court_id,
+    bookingDate: row.booking_date ? new Date(row.booking_date) : null,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    startTimeMinutes: row.start_time,
+    endTimeMinutes: row.end_time,
     finalPrice: parseFloat(row.final_price),
     bookingStatus: row.booking_status,
     paymentReference: row.payment_reference,
+    paymentProofImageId: row.payment_proof_image_id,
     cancellationReason: row.cancellation_reason,
+    expiresAt: row.expires_at ? new Date(row.expires_at) : null,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
-    timeSlot: null, // TODO: Reimplement when time slots are recreated
     court: {
       id: row.court_id,
       name: row.court_name,
@@ -305,12 +267,11 @@ const getPendingBookingsForFacility = async (facilityId, ownerId, options = {}) 
  */
 const acceptBooking = async (bookingId, ownerId, paymentReference = null) => {
   // Get booking with facility information
-  // TODO: Reimplement when time slots are recreated
-  // Note: This query will fail until time slots are recreated
   const bookingQuery = `
     SELECT 
-      b.id, b.user_id, b.time_slot_id, b.final_price, b.booking_status,
-      b.payment_reference, b.cancellation_reason, b.created_at, b.updated_at,
+      b.id, b.user_id, b.court_id, b.booking_date, b.start_time, b.end_time,
+      b.final_price, b.booking_status, b.payment_reference, b.payment_proof_image_id,
+      b.cancellation_reason, b.expires_at, b.created_at, b.updated_at,
       f.id as facility_id, f.owner_id
     FROM bookings b
     INNER JOIN courts c ON b.court_id = c.id
@@ -360,12 +321,11 @@ const acceptBooking = async (bookingId, ownerId, paymentReference = null) => {
  */
 const rejectBooking = async (bookingId, ownerId, rejectionReason = null) => {
   // Get booking with facility information
-  // TODO: Reimplement when time slots are recreated
-  // Note: This query will fail until time slots are recreated
   const bookingQuery = `
     SELECT 
-      b.id, b.user_id, b.time_slot_id, b.final_price, b.booking_status,
-      b.payment_reference, b.cancellation_reason, b.created_at, b.updated_at,
+      b.id, b.user_id, b.court_id, b.booking_date, b.start_time, b.end_time,
+      b.final_price, b.booking_status, b.payment_reference, b.payment_proof_image_id,
+      b.cancellation_reason, b.expires_at, b.created_at, b.updated_at,
       f.id as facility_id, f.owner_id
     FROM bookings b
     INNER JOIN courts c ON b.court_id = c.id
@@ -407,8 +367,6 @@ const rejectBooking = async (bookingId, ownerId, rejectionReason = null) => {
     // Reject booking
     const rejectedBooking = await Booking.reject(bookingId, rejectionReason);
 
-    // TODO: Reimplement time slot status update when time slots are recreated
-
     await client.query('COMMIT');
 
     return rejectedBooking;
@@ -445,12 +403,11 @@ const getUserBookings = async (userId, options = {}) => {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // TODO: Reimplement when time slots are recreated
-  // Note: This query will fail until time slots are recreated
   const query = `
     SELECT 
-      b.id, b.user_id, b.time_slot_id, b.final_price, b.booking_status,
-      b.payment_reference, b.cancellation_reason, b.created_at, b.updated_at,
+      b.id, b.user_id, b.court_id, b.booking_date, b.start_time, b.end_time,
+      b.final_price, b.booking_status, b.payment_reference, b.payment_proof_image_id,
+      b.cancellation_reason, b.expires_at, b.created_at, b.updated_at,
       c.id as court_id, c.name as court_name, c.description as court_description,
       c.price_per_hour, c.is_indoor,
       f.id as facility_id, f.name as facility_name, f.address as facility_address,
@@ -478,14 +435,20 @@ const getUserBookings = async (userId, options = {}) => {
   const bookings = result.rows.map(row => ({
     id: row.id,
     userId: row.user_id,
-    timeSlotId: row.time_slot_id,
+    courtId: row.court_id,
+    bookingDate: row.booking_date ? new Date(row.booking_date) : null,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    startTimeMinutes: row.start_time,
+    endTimeMinutes: row.end_time,
     finalPrice: parseFloat(row.final_price),
     bookingStatus: row.booking_status,
     paymentReference: row.payment_reference,
+    paymentProofImageId: row.payment_proof_image_id,
     cancellationReason: row.cancellation_reason,
+    expiresAt: row.expires_at ? new Date(row.expires_at) : null,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
-    timeSlot: null, // TODO: Reimplement when time slots are recreated
     court: {
       id: row.court_id,
       name: row.court_name,
@@ -512,7 +475,6 @@ const getUserBookings = async (userId, options = {}) => {
 };
 
 module.exports = {
-  createBooking,
   getBookingDetails,
   cancelBooking,
   confirmBooking,

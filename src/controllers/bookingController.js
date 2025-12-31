@@ -6,6 +6,12 @@
  */
 
 const bookingService = require('../services/bookingService');
+const transactionSafeBookingService = require('../services/transactionSafeBookingService');
+const bookingPaymentProofService = require('../services/bookingPaymentProofService');
+const imageService = require('../services/imageService');
+const s3Service = require('../services/s3Service');
+const Booking = require('../models/Booking');
+const timeNorm = require('../utils/timeNormalization');
 const { 
   sendSuccess, 
   sendCreated, 
@@ -17,12 +23,41 @@ const {
  * Create a new booking
  * POST /api/v1/bookings
  * Requires authentication
- * Booking is created with 'pending' status and must be confirmed via PUT /bookings/:id/confirm
+ * Booking is created with 'pending' status and must be accepted/rejected by facility owner
+ * 
+ * Request body:
+ * {
+ *   "courtId": 5,
+ *   "date": "2024-01-15",
+ *   "startTime": "10:00",
+ *   "endTime": "11:30"
+ * }
  */
 const createBooking = async (req, res, next) => {
   try {
-    // Time slots have been removed - will be recreated from scratch
-    return sendValidationError(res, 'Time slots have been removed. Please recreate time slots from scratch.');
+    const userId = req.userId;
+    const { courtId, date, startTime, endTime, paymentReference } = req.body;
+
+    // Validate required fields
+    if (!courtId || !date || !startTime || !endTime) {
+      return sendValidationError(res, 'Missing required fields: courtId, date, startTime, endTime');
+    }
+
+    // Convert times to minutes since midnight
+    const startTimeMinutes = timeNorm.toMinutesSinceMidnight(startTime);
+    const endTimeMinutes = timeNorm.toMinutesSinceMidnight(endTime);
+
+    // Create booking using transaction-safe service
+    const booking = await transactionSafeBookingService.createTransactionSafeBooking(
+      userId,
+      parseInt(courtId, 10),
+      new Date(date),
+      startTimeMinutes,
+      endTimeMinutes,
+      { paymentReference }
+    );
+
+    return sendCreated(res, booking, 'Booking created successfully');
   } catch (error) {
     next(error);
   }
@@ -187,6 +222,120 @@ const rejectBooking = async (req, res, next) => {
   }
 };
 
+/**
+ * Upload payment proof image for a booking
+ * PUT /api/v1/bookings/:id/payment-proof
+ * Requires authentication (must be booking owner)
+ * 
+ * This endpoint:
+ * 1. Creates image record for payment proof
+ * 2. Generates pre-signed URL for S3 upload
+ * 3. Links image to booking
+ * 
+ * Request body:
+ * {
+ *   "contentType": "image/jpeg"
+ * }
+ */
+const uploadPaymentProof = async (req, res, next) => {
+  try {
+    const bookingId = parseInt(req.params.id, 10);
+    const userId = req.userId;
+    const { contentType } = req.body;
+
+    if (isNaN(bookingId)) {
+      return sendValidationError(res, 'Invalid booking ID');
+    }
+
+    if (!contentType) {
+      return sendValidationError(res, 'Content type is required');
+    }
+
+    // Validate content type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(contentType.toLowerCase())) {
+      return sendValidationError(
+        res,
+        `Invalid content type. Must be one of: ${allowedTypes.join(', ')}`
+      );
+    }
+
+    // Step 1: Verify booking exists and user owns it (before creating image)
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return sendError(res, 'Booking not found', 404, 'BOOKING_NOT_FOUND');
+    }
+    if (booking.userId !== userId) {
+      return sendError(res, 'You can only upload payment proof for your own bookings', 403, 'FORBIDDEN');
+    }
+    if (booking.bookingStatus !== 'pending') {
+      return sendError(res, 'Payment proof can only be uploaded for pending bookings', 400, 'INVALID_BOOKING_STATUS');
+    }
+
+    // Step 2: Create image record for payment proof
+    const image = await imageService.createImage(
+      {
+        entityType: 'booking',
+        entityId: bookingId,
+        imageType: 'payment_proof',
+        isPrimary: true
+      },
+      userId,
+      req.user.role || 'user'
+    );
+
+    // Step 3: Generate pre-signed URL for S3 upload
+    const presignedData = await s3Service.generatePresignedUploadUrl(
+      image.id,
+      contentType,
+      userId
+    );
+
+    // Step 4: Link image to booking
+    const updatedBooking = await bookingPaymentProofService.linkPaymentProof(
+      bookingId,
+      userId,
+      image.id
+    );
+
+    // Return booking with upload instructions
+    return sendSuccess(res, {
+      booking: {
+        id: updatedBooking.id,
+        paymentProofImageId: updatedBooking.paymentProofImageId
+      },
+      image: {
+        id: image.id,
+        ...presignedData
+      }
+    }, 'Payment proof upload initiated. Use the uploadUrl to upload the image file.');
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Remove payment proof image from a booking
+ * DELETE /api/v1/bookings/:id/payment-proof
+ * Requires authentication (must be booking owner)
+ */
+const removePaymentProof = async (req, res, next) => {
+  try {
+    const bookingId = parseInt(req.params.id, 10);
+    const userId = req.userId;
+
+    if (isNaN(bookingId)) {
+      return sendValidationError(res, 'Invalid booking ID');
+    }
+
+    const booking = await bookingPaymentProofService.removePaymentProof(bookingId, userId);
+
+    return sendSuccess(res, booking, 'Payment proof removed successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getBookingDetails,
@@ -194,6 +343,8 @@ module.exports = {
   cancelBooking,
   getPendingBookingsForFacility,
   acceptBooking,
-  rejectBooking
+  rejectBooking,
+  uploadPaymentProof,
+  removePaymentProof
 };
 

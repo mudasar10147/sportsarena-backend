@@ -27,6 +27,7 @@ const User = require('../models/User');
 const Facility = require('../models/Facility');
 const Court = require('../models/Court');
 const Sport = require('../models/Sport');
+const Booking = require('../models/Booking');
 const { deleteImageFromS3 } = require('./s3Service');
 
 // Image limits configuration
@@ -50,11 +51,14 @@ const IMAGE_LIMITS = {
   },
   review: {
     gallery: 5
+  },
+  booking: {
+    payment_proof: 1  // Only one payment proof per booking
   }
 };
 
 // Single-image types (must be primary and only one allowed)
-const SINGLE_IMAGE_TYPES = ['profile', 'cover', 'icon', 'banner', 'main'];
+const SINGLE_IMAGE_TYPES = ['profile', 'cover', 'icon', 'banner', 'main', 'payment_proof'];
 
 /**
  * Validate image creation request
@@ -215,6 +219,31 @@ const validateEntityAccess = async (entityType, entityId, userId, userRole) => {
     case 'review':
       // Users can upload review images (ownership validated in review system)
       // For now, allow any authenticated user
+      break;
+
+    case 'booking':
+      // Users can upload payment proof for their own bookings
+      // Verify booking exists and user owns it
+      const booking = await Booking.findById(entityId);
+      if (!booking) {
+        const error = new Error('Booking not found');
+        error.statusCode = 404;
+        error.errorCode = 'BOOKING_NOT_FOUND';
+        throw error;
+      }
+      if (booking.userId !== userId) {
+        const error = new Error('You can only upload payment proof for your own bookings');
+        error.statusCode = 403;
+        error.errorCode = 'FORBIDDEN';
+        throw error;
+      }
+      // Only allow payment_proof image type for bookings
+      if (imageType !== 'payment_proof') {
+        const error = new Error('Only payment_proof image type is allowed for bookings');
+        error.statusCode = 400;
+        error.errorCode = 'INVALID_IMAGE_TYPE';
+        throw error;
+      }
       break;
 
     default:

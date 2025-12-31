@@ -69,12 +69,22 @@ Create a new booking. The booking is created with status `pending` and must be a
 
 ```json
 {
-  "timeSlotId": 5
+  "courtId": 5,
+  "date": "2024-01-15",
+  "startTime": "10:00",
+  "endTime": "11:30",
+  "paymentReference": null
 }
 ```
 
 **Required Fields:**
-- `timeSlotId` (number): Time slot ID to book
+- `courtId` (number): Court ID to book
+- `date` (string): Booking date in YYYY-MM-DD format
+- `startTime` (string): Start time in HH:MM format (e.g., "10:00")
+- `endTime` (string): End time in HH:MM format (e.g., "11:30")
+
+**Optional Fields:**
+- `paymentReference` (string): Payment transaction reference (if applicable)
 
 #### Success Response (201 Created)
 
@@ -85,11 +95,17 @@ Create a new booking. The booking is created with status `pending` and must be a
   "data": {
     "id": 1,
     "userId": 1,
-    "timeSlotId": 5,
+    "courtId": 5,
+    "bookingDate": "2024-01-15T00:00:00.000Z",
+    "startTime": 600,
+    "endTime": 690,
+    "startTimeMinutes": 600,
+    "endTimeMinutes": 690,
     "finalPrice": 1500.00,
     "bookingStatus": "pending",
     "paymentReference": null,
     "cancellationReason": null,
+    "expiresAt": "2025-01-16T10:30:00.000Z",
     "createdAt": "2025-01-15T10:30:00.000Z",
     "updatedAt": "2025-01-15T10:30:00.000Z"
   }
@@ -99,7 +115,8 @@ Create a new booking. The booking is created with status `pending` and must be a
 **Note:** 
 - Booking status is automatically set to `pending` (must be accepted/rejected by facility owner)
 - Price is automatically calculated from court's price per hour × duration
-- Time slot is automatically marked as `booked` to prevent double booking
+- Time range is automatically blocked to prevent double booking (transaction-safe)
+- Booking expires after configurable duration (default: 24 hours) if not accepted
 - Facility owner will review and accept/reject the booking
 
 #### Error Responses
@@ -108,26 +125,41 @@ Create a new booking. The booking is created with status `pending` and must be a
 ```json
 {
   "success": false,
-  "message": "Time slot ID is required",
+  "message": "Missing required fields: courtId, date, startTime, endTime",
   "error_code": "VALIDATION_ERROR"
 }
 ```
 
-**400 Bad Request - Slot Not Available**
-```json
-{
-  "success": false,
-  "message": "Time slot is not available for booking",
-  "error_code": "SLOT_NOT_AVAILABLE"
-}
-```
-
-**400 Bad Request - Slot Already Booked**
+**400 Bad Request - Booking Conflict**
 ```json
 {
   "success": false,
   "message": "Time slot is already booked",
-  "error_code": "SLOT_ALREADY_BOOKED"
+  "error_code": "BOOKING_CONFLICT",
+  "conflictingBooking": {
+    "id": 123,
+    "startTime": 600,
+    "endTime": 690,
+    "status": "confirmed"
+  }
+}
+```
+
+**400 Bad Request - Time Blocked**
+```json
+{
+  "success": false,
+  "message": "Time slot is blocked: Maintenance",
+  "error_code": "TIME_BLOCKED"
+}
+```
+
+**400 Bad Request - Outside Availability**
+```json
+{
+  "success": false,
+  "message": "Requested time is outside court availability hours",
+  "error_code": "OUTSIDE_AVAILABILITY"
 }
 ```
 
@@ -137,15 +169,6 @@ Create a new booking. The booking is created with status `pending` and must be a
   "success": false,
   "message": "No token provided. Please include Authorization: Bearer <token> header.",
   "error_code": "UNAUTHORIZED"
-}
-```
-
-**404 Not Found - Time Slot Not Found**
-```json
-{
-  "success": false,
-  "message": "Time slot not found",
-  "error_code": "TIME_SLOT_NOT_FOUND"
 }
 ```
 
@@ -181,26 +204,19 @@ Get detailed information about a specific booking, including time slot and court
   "data": {
     "id": 1,
     "userId": 1,
-    "timeSlotId": 5,
+    "courtId": 5,
+    "bookingDate": "2024-01-15T00:00:00.000Z",
+    "startTime": 600,
+    "endTime": 690,
+    "startTimeMinutes": 600,
+    "endTimeMinutes": 690,
     "finalPrice": 1500.00,
     "bookingStatus": "confirmed",
     "paymentReference": null,
     "cancellationReason": null,
+    "expiresAt": null,
     "createdAt": "2025-01-15T10:30:00.000Z",
-    "updatedAt": "2025-01-15T10:30:00.000Z",
-    "timeSlot": {
-      "id": 5,
-      "startTime": "2025-01-20T10:00:00.000Z",
-      "endTime": "2025-01-20T11:00:00.000Z",
-      "status": "booked"
-    },
-    "court": {
-      "id": 1,
-      "name": "Court 1",
-      "description": "Premium indoor court with air conditioning",
-      "pricePerHour": 1500.00,
-      "isIndoor": true
-    }
+    "updatedAt": "2025-01-15T10:30:00.000Z"
   }
 }
 ```
@@ -264,18 +280,19 @@ Get all pending bookings for a facility. Only the facility owner can access this
       {
         "id": 1,
         "userId": 5,
-        "timeSlotId": 10,
+        "courtId": 3,
+        "bookingDate": "2024-01-20T00:00:00.000Z",
+        "startTime": 840,
+        "endTime": 900,
+        "startTimeMinutes": 840,
+        "endTimeMinutes": 900,
         "finalPrice": 1500.00,
         "bookingStatus": "pending",
         "paymentReference": null,
         "cancellationReason": null,
+        "expiresAt": "2025-01-16T10:30:00.000Z",
         "createdAt": "2025-01-15T10:30:00.000Z",
         "updatedAt": "2025-01-15T10:30:00.000Z",
-        "timeSlot": {
-          "id": 10,
-          "startTime": "2025-01-20T14:00:00.000Z",
-          "endTime": "2025-01-20T15:00:00.000Z"
-        },
         "court": {
           "id": 3,
           "name": "Padel Court 1",
@@ -360,11 +377,17 @@ Accept a pending booking. Changes booking status from `pending` to `confirmed`. 
   "data": {
     "id": 1,
     "userId": 5,
-    "timeSlotId": 10,
+    "courtId": 3,
+    "bookingDate": "2024-01-20T00:00:00.000Z",
+    "startTime": 840,
+    "endTime": 900,
+    "startTimeMinutes": 840,
+    "endTimeMinutes": 900,
     "finalPrice": 1500.00,
     "bookingStatus": "confirmed",
     "paymentReference": "PAY-123456789",
     "cancellationReason": null,
+    "expiresAt": null,
     "createdAt": "2025-01-15T10:30:00.000Z",
     "updatedAt": "2025-01-15T10:35:00.000Z"
   }
@@ -373,7 +396,8 @@ Accept a pending booking. Changes booking status from `pending` to `confirmed`. 
 
 **Note:** 
 - Only pending bookings can be accepted
-- Time slot remains `booked` (no change needed)
+- Booking status changes from `pending` to `confirmed`
+- Expiration time is cleared (expiresAt becomes null)
 - Only facility owners can accept bookings for their facilities
 
 #### Error Responses
@@ -448,11 +472,17 @@ Reject a pending booking. Changes booking status from `pending` to `rejected` an
   "data": {
     "id": 1,
     "userId": 5,
-    "timeSlotId": 10,
+    "courtId": 3,
+    "bookingDate": "2024-01-20T00:00:00.000Z",
+    "startTime": 840,
+    "endTime": 900,
+    "startTimeMinutes": 840,
+    "endTimeMinutes": 900,
     "finalPrice": 1500.00,
     "bookingStatus": "rejected",
     "paymentReference": null,
     "cancellationReason": "Court maintenance scheduled",
+    "expiresAt": null,
     "createdAt": "2025-01-15T10:30:00.000Z",
     "updatedAt": "2025-01-15T10:35:00.000Z"
   }
@@ -461,7 +491,8 @@ Reject a pending booking. Changes booking status from `pending` to `rejected` an
 
 **Note:** 
 - Only pending bookings can be rejected
-- Time slot is automatically released and set to `available`
+- Booking status changes from `pending` to `rejected`
+- Time range becomes available again for other users
 - Only facility owners can reject bookings for their facilities
 
 #### Error Responses
@@ -538,11 +569,17 @@ Confirm a pending booking. Changes booking status from `pending` to `confirmed`.
   "data": {
     "id": 1,
     "userId": 1,
-    "timeSlotId": 5,
+    "courtId": 5,
+    "bookingDate": "2024-01-15T00:00:00.000Z",
+    "startTime": 600,
+    "endTime": 690,
+    "startTimeMinutes": 600,
+    "endTimeMinutes": 690,
     "finalPrice": 1500.00,
     "bookingStatus": "confirmed",
     "paymentReference": "PAY-123456789",
     "cancellationReason": null,
+    "expiresAt": null,
     "createdAt": "2025-01-15T10:30:00.000Z",
     "updatedAt": "2025-01-15T10:35:00.000Z"
   }
@@ -662,18 +699,24 @@ Cancel a booking (pending or confirmed). The time slot will be made available ag
   "data": {
     "id": 1,
     "userId": 1,
-    "timeSlotId": 5,
+    "courtId": 5,
+    "bookingDate": "2024-01-15T00:00:00.000Z",
+    "startTime": 600,
+    "endTime": 690,
+    "startTimeMinutes": 600,
+    "endTimeMinutes": 690,
     "finalPrice": 1500.00,
     "bookingStatus": "cancelled",
     "paymentReference": null,
     "cancellationReason": "Change of plans",
+    "expiresAt": null,
     "createdAt": "2025-01-15T10:30:00.000Z",
     "updatedAt": "2025-01-15T11:00:00.000Z"
   }
 }
 ```
 
-**Note:** After cancellation, the time slot status is automatically changed back to `available`.
+**Note:** After cancellation, the time range becomes available again for other users to book.
 
 #### Error Responses
 
@@ -733,7 +776,135 @@ Cancel a booking (pending or confirmed). The time slot will be made available ag
 
 ---
 
-### 4. Get User Bookings
+### 7. Upload Payment Proof (Bank Transfer)
+
+**`PUT /api/v1/bookings/:id/payment-proof`**
+
+Upload payment proof image for a pending booking. This endpoint creates an image record, generates a pre-signed S3 URL for upload, and links the image to the booking.
+
+**Authentication:** Required (must be booking owner)
+
+**Use Case:** For bank transfer payments, users upload payment proof after creating booking.
+
+#### URL Parameters
+
+- `id` (number, required): Booking ID
+
+#### Request Body
+
+```json
+{
+  "contentType": "image/jpeg"
+}
+```
+
+**Required Fields:**
+- `contentType` (string): Image MIME type. Must be one of: `image/jpeg`, `image/jpg`, `image/png`, `image/webp`
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Payment proof upload initiated. Use the uploadUrl to upload the image file.",
+  "data": {
+    "booking": {
+      "id": 1,
+      "paymentProofImageId": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "image": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "uploadUrl": "https://s3.amazonaws.com/...",
+      "s3Key": "booking/1/550e8400-e29b-41d4-a716-446655440000.jpg",
+      "publicUrl": "https://cdn.example.com/booking/1/550e8400-e29b-41d4-a716-446655440000.jpg",
+      "expiresIn": 300,
+      "maxFileSize": 5242880
+    }
+  }
+}
+```
+
+**Note:**
+- Image record is created immediately
+- Use `uploadUrl` to upload image file directly to S3 (PUT request)
+- Pre-signed URL expires in 5 minutes
+- Only one payment proof per booking (replaces existing if any)
+- Only pending bookings can have payment proof uploaded
+
+#### Upload Flow
+
+1. **Call this endpoint** → Get pre-signed URL
+2. **Upload image to S3** → PUT request to `uploadUrl` with image file
+3. **Image is automatically linked** → Booking now has `paymentProofImageId`
+4. **Facility admin can view** → Payment proof appears in pending bookings list
+
+#### Error Responses
+
+**400 Bad Request - Invalid Booking Status**
+```json
+{
+  "success": false,
+  "message": "Payment proof can only be uploaded for pending bookings",
+  "error_code": "INVALID_BOOKING_STATUS"
+}
+```
+
+**403 Forbidden - Not Booking Owner**
+```json
+{
+  "success": false,
+  "message": "You can only upload payment proof for your own bookings",
+  "error_code": "FORBIDDEN"
+}
+```
+
+**404 Not Found - Booking Not Found**
+```json
+{
+  "success": false,
+  "message": "Booking not found",
+  "error_code": "BOOKING_NOT_FOUND"
+}
+```
+
+---
+
+### 8. Remove Payment Proof
+
+**`DELETE /api/v1/bookings/:id/payment-proof`**
+
+Remove payment proof image from a booking.
+
+**Authentication:** Required (must be booking owner)
+
+#### URL Parameters
+
+- `id` (number, required): Booking ID
+
+#### Success Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Payment proof removed successfully",
+  "data": {
+    "id": 1,
+    "userId": 1,
+    "courtId": 5,
+    "paymentProofImageId": null,
+    "bookingStatus": "pending"
+  }
+}
+```
+
+**Note:**
+- Removes link between booking and payment proof image
+- Image record itself is not deleted (soft delete)
+- Only booking owner can remove payment proof
+
+---
+
+### 9. Get User Bookings
 
 **`GET /api/v1/users/bookings`**
 
@@ -752,24 +923,28 @@ The backend implements **slot locking** to prevent double booking:
 ### How It Works
 
 1. **Transaction-Based Locking**: Uses PostgreSQL transactions with `FOR UPDATE` row lock
-2. **Atomic Operations**: Booking creation and slot status update happen in a single transaction
-3. **Double-Check**: Verifies slot availability before and during booking creation
-4. **Automatic Slot Update**: Time slot is automatically marked as `booked` when booking is created
+2. **Atomic Operations**: All validation and booking creation happen in a single transaction
+3. **Re-Validation**: Verifies availability inside transaction (prevents race conditions)
+4. **Overlap Detection**: Checks for overlapping bookings using time range overlap logic
+5. **Automatic Blocking**: Time range is automatically blocked when booking is created
 
 ### Process Flow
 
 ```
-1. User requests booking for time slot
-2. Backend starts database transaction
-3. Lock time slot row (FOR UPDATE)
-4. Check if slot is available
-5. Check if slot is already booked (double-check)
-6. Calculate price from court
-7. Create booking with status 'pending'
-8. Mark time slot as 'booked'
-9. Commit transaction
-10. User confirms booking via PUT /bookings/:id/confirm
-11. Booking status updated to 'confirmed'
+1. User selects time range from availability
+2. User creates booking request (courtId, date, startTime, endTime)
+3. Backend starts database transaction
+4. Lock court row (FOR UPDATE)
+5. Check for overlapping bookings (FOR UPDATE)
+6. Check availability rules (within court hours)
+7. Check blocked time ranges
+8. Calculate price from court
+9. Create booking with status 'pending' and expiration time
+10. Commit transaction
+11. Booking appears in facility admin's pending bookings list
+12. Facility admin accepts/rejects booking
+13. If accepted: status changes to 'confirmed', expiresAt cleared
+14. If rejected: status changes to 'rejected', time range released
 ```
 
 ### Benefits
@@ -797,9 +972,12 @@ All endpoints follow consistent error response format:
 | Error Code | HTTP Status | Description |
 |------------|-------------|-------------|
 | `VALIDATION_ERROR` | 400 | Invalid input data |
-| `TIME_SLOT_NOT_FOUND` | 404 | Time slot does not exist |
-| `SLOT_NOT_AVAILABLE` | 400 | Time slot is not available (blocked or booked) |
-| `SLOT_ALREADY_BOOKED` | 400 | Time slot is already booked |
+| `BOOKING_CONFLICT` | 409 | Time range is already booked by another booking |
+| `TIME_BLOCKED` | 409 | Time range is blocked (maintenance, private event) |
+| `OUTSIDE_AVAILABILITY` | 400 | Requested time is outside court availability hours |
+| `INVALID_TIME_RANGE` | 400 | Start time must be before end time |
+| `INVALID_TIME_GRANULARITY` | 400 | Times must align to 30-minute intervals |
+| `DURATION_TOO_SHORT` | 400 | Booking duration is too short |
 | `BOOKING_NOT_FOUND` | 404 | Booking does not exist |
 | `COURT_NOT_FOUND` | 404 | Court does not exist |
 | `FACILITY_NOT_FOUND` | 404 | Facility does not exist |
@@ -807,14 +985,12 @@ All endpoints follow consistent error response format:
 | `CANNOT_CONFIRM_CANCELLED` | 400 | Cannot confirm a cancelled booking |
 | `CANNOT_CONFIRM_COMPLETED` | 400 | Cannot confirm a completed booking |
 | `CANNOT_CONFIRM_PAST_SLOT` | 400 | Cannot confirm booking for past time slot |
-| `SLOT_NOT_BOOKED` | 400 | Time slot is not in booked status |
 | `CANNOT_ACCEPT_NON_PENDING` | 400 | Only pending bookings can be accepted |
 | `CANNOT_REJECT_NON_PENDING` | 400 | Only pending bookings can be rejected |
 | `ALREADY_CANCELLED` | 400 | Booking is already cancelled |
 | `CANNOT_CANCEL_COMPLETED` | 400 | Cannot cancel completed booking |
 | `CANNOT_CANCEL_PAST_SLOT` | 400 | Cannot cancel booking for past time slot |
-| `SLOT_UPDATE_FAILED` | 500 | Failed to update time slot status |
-| `SLOT_STATUS_UPDATE_FAILED` | 500 | Time slot status was not updated correctly |
+| `COURT_INACTIVE` | 400 | Court is not active |
 | `UNAUTHORIZED` | 401 | Missing or invalid token |
 | `FORBIDDEN` | 403 | Not booking owner, facility owner, or insufficient permissions |
 
@@ -840,8 +1016,33 @@ curl -X POST http://localhost:3000/api/v1/bookings \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "timeSlotId": 5
+    "courtId": 5,
+    "date": "2024-01-15",
+    "startTime": "10:00",
+    "endTime": "11:30"
   }'
+```
+
+#### Upload Payment Proof
+```bash
+# Step 1: Get pre-signed URL
+curl -X PUT http://localhost:3000/api/v1/bookings/1/payment-proof \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contentType": "image/jpeg"
+  }'
+
+# Step 2: Upload image to S3 using the uploadUrl from response
+curl -X PUT "<uploadUrl_from_response>" \
+  -H "Content-Type: image/jpeg" \
+  --data-binary @payment_proof.jpg
+```
+
+#### Remove Payment Proof
+```bash
+curl -X DELETE http://localhost:3000/api/v1/bookings/1/payment-proof \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
 #### Get Booking Details
@@ -916,8 +1117,11 @@ curl -X GET "http://localhost:3000/api/v1/users/bookings?page=1&limit=10" \
 ### Complete Booking Flow (User Perspective)
 
 ```javascript
-// Frontend example - user booking flow
-const timeSlotId = 5;
+// Frontend example - user booking flow with bank transfer
+const courtId = 5;
+const date = "2024-01-15";
+const startTime = "10:00";
+const endTime = "11:30";
 
 // 1. Create booking (status: pending)
 const createResponse = await fetch('/api/v1/bookings', {
@@ -926,23 +1130,48 @@ const createResponse = await fetch('/api/v1/bookings', {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'
   },
-  body: JSON.stringify({ timeSlotId })
+  body: JSON.stringify({ 
+    courtId, 
+    date, 
+    startTime, 
+    endTime 
+  })
 });
 
 const { data: booking } = await createResponse.json();
 console.log(`Booking created: ${booking.id}, Status: ${booking.bookingStatus}, Price: PKR ${booking.finalPrice}`);
 
-// 2. Get booking details
-const detailsResponse = await fetch(`/api/v1/bookings/${booking.id}`, {
-  headers: {
-    'Authorization': `Bearer ${token}`
-  }
-});
+// 2. Upload payment proof (bank transfer receipt)
+const fileInput = document.getElementById('paymentProofFile'); // File input element
+const file = fileInput.files[0];
 
-const { data: bookingDetails } = await detailsResponse.json();
-console.log(`Court: ${bookingDetails.court.name}`);
-console.log(`Time: ${new Date(bookingDetails.timeSlot.startTime).toLocaleString()}`);
-console.log(`Status: ${bookingDetails.bookingStatus}`); // Will be 'pending' until facility owner accepts
+if (file) {
+  // Step 2a: Get pre-signed URL
+  const proofResponse = await fetch(`/api/v1/bookings/${booking.id}/payment-proof`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contentType: file.type
+    })
+  });
+
+  const { data: proofData } = await proofResponse.json();
+  
+  // Step 2b: Upload image to S3
+  await fetch(proofData.image.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': file.type
+    },
+    body: file
+  });
+
+  console.log('Payment proof uploaded successfully');
+  console.log(`Image URL: ${proofData.image.publicUrl}`);
+}
 
 // 3. Cancel if needed (works for both pending and confirmed bookings)
 if (needsCancellation) {
@@ -1015,11 +1244,17 @@ console.log(`Booking ${bookingToReject} rejected. Time slot is now available.`);
 {
   "id": 1,
   "userId": 1,
-  "timeSlotId": 5,
+  "courtId": 5,
+  "bookingDate": "2024-01-15T00:00:00.000Z",
+  "startTime": 600,
+  "endTime": 690,
+  "startTimeMinutes": 600,
+  "endTimeMinutes": 690,
   "finalPrice": 1500.00,
-  "bookingStatus": "confirmed",
+  "bookingStatus": "pending",
   "paymentReference": null,
   "cancellationReason": null,
+  "expiresAt": "2025-01-16T10:30:00.000Z",
   "createdAt": "2025-01-15T10:30:00.000Z",
   "updatedAt": "2025-01-15T10:30:00.000Z"
 }
@@ -1029,11 +1264,18 @@ console.log(`Booking ${bookingToReject} rejected. Time slot is now available.`);
 
 - **id**: Unique booking identifier
 - **userId**: User ID who made the booking
-- **timeSlotId**: Time slot ID being booked
+- **courtId**: Court ID being booked
+- **bookingDate**: Booking date (YYYY-MM-DD)
+- **startTime**: Start time in minutes since midnight (0-1439)
+- **endTime**: End time in minutes since midnight (0-1439)
+- **startTimeMinutes**: Same as startTime (for convenience)
+- **endTimeMinutes**: Same as endTime (for convenience)
 - **finalPrice**: Final booking price in PKR (calculated automatically)
-- **bookingStatus**: Booking status (`confirmed` for MVP)
-- **paymentReference**: Payment transaction reference (null for MVP)
-- **cancellationReason**: Reason for cancellation (if cancelled)
+- **bookingStatus**: Booking status (`pending`, `confirmed`, `rejected`, `cancelled`, `completed`, `expired`)
+- **paymentReference**: Payment transaction reference (null until payment confirmed)
+- **paymentProofImageId**: UUID of payment proof image (null if not uploaded yet)
+- **cancellationReason**: Reason for cancellation/rejection (if cancelled/rejected)
+- **expiresAt**: Expiration timestamp for pending bookings (null after acceptance)
 - **createdAt**: Creation timestamp (ISO 8601)
 - **updatedAt**: Last update timestamp (ISO 8601)
 
@@ -1053,13 +1295,18 @@ Example:
 
 ## Notes
 
-- **No Payment Process**: Bookings are created and confirmed immediately (MVP)
-- **Slot Locking**: Backend prevents double booking using database transactions
+- **Pending Booking Flow**: Bookings are created with `pending` status and must be accepted by facility owner
+- **Bank Transfer Payment**: Users upload payment proof image after creating booking
+- **Payment Proof Upload**: Two-step process: get pre-signed URL, then upload image to S3
+- **Transaction-Safe Booking**: Backend prevents double booking using database transactions with row-level locking
 - **Automatic Price Calculation**: Price calculated from court price × duration
-- **Immediate Confirmation**: Booking status is `confirmed` upon creation
-- **Cancellation Policy**: Users can cancel if time slot hasn't started
-- **Time Slot Release**: Cancelled bookings automatically release the time slot
-- **Ownership Validation**: Users can only view/cancel their own bookings
+- **Expiration Mechanism**: Pending bookings expire after configurable duration (default: 24 hours)
+- **Facility Owner Approval**: Only facility owners can accept/reject bookings for their facilities
+- **Payment Proof Review**: Facility admin can view payment proof images when reviewing pending bookings
+- **Cancellation Policy**: Users can cancel pending or confirmed bookings if time hasn't started
+- **Time Range Release**: Cancelled/rejected bookings automatically release the time range
+- **Ownership Validation**: Users can only view/cancel/upload proof for their own bookings
+- **Time Format**: Times stored as minutes since midnight (0-1439) for consistency
 - All timestamps are in ISO 8601 format (UTC)
 
 ---

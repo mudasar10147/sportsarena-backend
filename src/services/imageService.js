@@ -72,6 +72,14 @@ const SINGLE_IMAGE_TYPES = ['profile', 'cover', 'icon', 'banner', 'main', 'payme
 const validateImageCreation = async (imageData, userId, userRole) => {
   const { entityType, entityId, imageType } = imageData;
 
+  // Validate required fields
+  if (!entityType || !entityId || !imageType) {
+    const error = new Error('Missing required fields: entityType, entityId, imageType');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
   // Validate entity exists and user has permission
   await validateEntityAccess(entityType, entityId, userId, userRole, imageType);
 
@@ -239,7 +247,7 @@ const validateEntityAccess = async (entityType, entityId, userId, userRole, imag
         throw error;
       }
       // Only allow payment_proof image type for bookings
-      if (imageType !== 'payment_proof') {
+      if (!imageType || imageType !== 'payment_proof') {
         const error = new Error('Only payment_proof image type is allowed for bookings');
         error.statusCode = 400;
         error.errorCode = 'INVALID_IMAGE_TYPE';

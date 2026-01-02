@@ -73,7 +73,7 @@ const validateImageCreation = async (imageData, userId, userRole) => {
   const { entityType, entityId, imageType } = imageData;
 
   // Validate entity exists and user has permission
-  await validateEntityAccess(entityType, entityId, userId, userRole);
+  await validateEntityAccess(entityType, entityId, userId, userRole, imageType);
 
   // Check image limits (for gallery types, not single-image types)
   // Single-image types are handled by replacement logic
@@ -120,10 +120,11 @@ const validateImageCreation = async (imageData, userId, userRole) => {
  * @param {number} entityId - Entity ID
  * @param {number} userId - User ID
  * @param {string} userRole - User role
+ * @param {string} [imageType] - Image type (optional, needed for booking validation)
  * @returns {Promise<void>}
  * @throws {Error} If user doesn't have access
  */
-const validateEntityAccess = async (entityType, entityId, userId, userRole) => {
+const validateEntityAccess = async (entityType, entityId, userId, userRole, imageType = null) => {
   switch (entityType) {
     case 'user':
       // Users can only upload images for themselves

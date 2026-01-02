@@ -20,7 +20,7 @@ const { parsePagination, sendPaginatedResponse } = require('../utils/pagination'
 const listFacilities = async (req, res, next) => {
   try {
     const { page, limit, offset } = parsePagination(req.query);
-    const { city, sportId, latitude, longitude, radiusKm } = req.query;
+    const { city, sportId, latitude, longitude, radiusKm, date, startTime, endTime } = req.query;
 
     // Build filters
     const filters = {
@@ -30,8 +30,42 @@ const listFacilities = async (req, res, next) => {
       sportId: sportId ? parseInt(sportId, 10) : undefined,
       latitude: latitude ? parseFloat(latitude) : undefined,
       longitude: longitude ? parseFloat(longitude) : undefined,
-      radiusKm: radiusKm ? parseFloat(radiusKm) : undefined
+      radiusKm: radiusKm ? parseFloat(radiusKm) : undefined,
+      date: date || undefined,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined
     };
+
+    // Validate availability parameters (all or none)
+    if ((date || startTime || endTime) && (!date || !startTime || !endTime)) {
+      return sendValidationError(
+        res,
+        'For availability filtering, all of date, startTime, and endTime must be provided'
+      );
+    }
+
+    // Validate date format if provided
+    if (date) {
+      const dateMatch = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!dateMatch) {
+        return sendValidationError(res, 'Invalid date format. Expected YYYY-MM-DD (e.g., 2025-12-31)');
+      }
+    }
+
+    // Validate time format if provided
+    if (startTime) {
+      const timeMatch = startTime.match(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/);
+      if (!timeMatch) {
+        return sendValidationError(res, 'Invalid startTime format. Expected HH:MM (e.g., 13:00)');
+      }
+    }
+
+    if (endTime) {
+      const timeMatch = endTime.match(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/);
+      if (!timeMatch) {
+        return sendValidationError(res, 'Invalid endTime format. Expected HH:MM (e.g., 16:00)');
+      }
+    }
 
     // Validate location-based search
     if ((latitude || longitude || radiusKm) && (!latitude || !longitude || !radiusKm)) {
@@ -306,11 +340,31 @@ const getClosestArenas = async (req, res, next) => {
   }
 };
 
+/**
+ * Get list of unique cities where facilities exist
+ * GET /api/v1/facilities/cities
+ */
+const getCities = async (req, res, next) => {
+  try {
+    const { isActive } = req.query;
+    
+    // Parse isActive parameter (default: true)
+    const filterActive = isActive === undefined ? true : isActive === 'true' || isActive === true;
+
+    const cities = await facilityService.getCities({ isActive: filterActive });
+
+    return sendSuccess(res, cities, 'Cities retrieved successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   listFacilities,
   getFacilityDetails,
   createFacility,
   updateFacility,
-  getClosestArenas
+  getClosestArenas,
+  getCities
 };
 

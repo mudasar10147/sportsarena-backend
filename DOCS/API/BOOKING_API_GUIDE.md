@@ -289,6 +289,8 @@ Get all pending bookings for a facility. Only the facility owner can access this
         "finalPrice": 1500.00,
         "bookingStatus": "pending",
         "paymentReference": null,
+        "paymentProofImageId": "ece127b1-f814-40bd-8fe9-2ef003e4161b",
+        "paymentProofImageUrl": "https://cdn.example.com/booking/1/ece127b1-f814-40bd-8fe9-2ef003e4161b.jpg",
         "cancellationReason": null,
         "expiresAt": "2025-01-16T10:30:00.000Z",
         "createdAt": "2025-01-15T10:30:00.000Z",
@@ -386,6 +388,8 @@ Accept a pending booking. Changes booking status from `pending` to `confirmed`. 
     "finalPrice": 1500.00,
     "bookingStatus": "confirmed",
     "paymentReference": "PAY-123456789",
+    "paymentProofImageId": "ece127b1-f814-40bd-8fe9-2ef003e4161b",
+    "paymentProofImageUrl": "https://cdn.example.com/booking/1/ece127b1-f814-40bd-8fe9-2ef003e4161b.jpg",
     "cancellationReason": null,
     "expiresAt": null,
     "createdAt": "2025-01-15T10:30:00.000Z",
@@ -481,6 +485,8 @@ Reject a pending booking. Changes booking status from `pending` to `rejected` an
     "finalPrice": 1500.00,
     "bookingStatus": "rejected",
     "paymentReference": null,
+    "paymentProofImageId": "ece127b1-f814-40bd-8fe9-2ef003e4161b",
+    "paymentProofImageUrl": "https://cdn.example.com/booking/1/ece127b1-f814-40bd-8fe9-2ef003e4161b.jpg",
     "cancellationReason": "Court maintenance scheduled",
     "expiresAt": null,
     "createdAt": "2025-01-15T10:30:00.000Z",
@@ -825,18 +831,23 @@ Upload payment proof image for a pending booking. This endpoint creates an image
 ```
 
 **Note:**
-- Image record is created immediately
+- Image record is created immediately with `uploadStatus: 'pending'`
 - Use `uploadUrl` to upload image file directly to S3 (PUT request)
+- **After successful S3 upload, you MUST call `/api/v1/images/id/:imageId/confirm-upload`** to update status to 'uploaded'
+- Without confirming, the image status stays "pending" and will show as "being processed" in the frontend
 - Pre-signed URL expires in 5 minutes
 - Only one payment proof per booking (replaces existing if any)
 - Only pending bookings can have payment proof uploaded
 
 #### Upload Flow
 
-1. **Call this endpoint** → Get pre-signed URL
+1. **Call this endpoint** → Get pre-signed URL and image ID
 2. **Upload image to S3** → PUT request to `uploadUrl` with image file
-3. **Image is automatically linked** → Booking now has `paymentProofImageId`
-4. **Facility admin can view** → Payment proof appears in pending bookings list
+3. **Confirm upload** → POST to `/api/v1/images/id/:imageId/confirm-upload` (REQUIRED)
+4. **Image is linked** → Booking now has `paymentProofImageId` (already linked in step 1)
+5. **Facility admin can view** → Payment proof appears in pending bookings list
+
+**Important:** Step 3 (confirm upload) is **required**. Without it, the image status remains "pending" and will show as "being processed" in the frontend.
 
 #### Error Responses
 
@@ -1032,11 +1043,21 @@ curl -X PUT http://localhost:3000/api/v1/bookings/1/payment-proof \
   -d '{
     "contentType": "image/jpeg"
   }'
+# Response includes: { "data": { "image": { "id": "uuid-here", "uploadUrl": "..." } } }
 
 # Step 2: Upload image to S3 using the uploadUrl from response
 curl -X PUT "<uploadUrl_from_response>" \
   -H "Content-Type: image/jpeg" \
   --data-binary @payment_proof.jpg
+
+# Step 3: Confirm upload (REQUIRED - updates status from "pending" to "uploaded")
+curl -X POST http://localhost:3000/api/v1/images/id/<imageId_from_step1>/confirm-upload \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fileSize": 123456,
+    "contentType": "image/jpeg"
+  }'
 ```
 
 #### Remove Payment Proof
@@ -1149,19 +1170,20 @@ if (file) {
   // Step 2a: Get pre-signed URL
   const proofResponse = await fetch(`/api/v1/bookings/${booking.id}/payment-proof`, {
     method: 'PUT',
-    headers: {
+  headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       contentType: file.type
     })
-  });
+});
 
   const { data: proofData } = await proofResponse.json();
+  const imageId = proofData.image.id;
   
   // Step 2b: Upload image to S3
-  await fetch(proofData.image.uploadUrl, {
+  const uploadResponse = await fetch(proofData.image.uploadUrl, {
     method: 'PUT',
     headers: {
       'Content-Type': file.type
@@ -1169,7 +1191,24 @@ if (file) {
     body: file
   });
 
-  console.log('Payment proof uploaded successfully');
+  if (!uploadResponse.ok) {
+    throw new Error('Failed to upload image to S3');
+  }
+
+  // Step 2c: Confirm upload (REQUIRED - updates status from "pending" to "uploaded")
+  await fetch(`/api/v1/images/id/${imageId}/confirm-upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      fileSize: file.size,
+      contentType: file.type
+    })
+  });
+
+  console.log('Payment proof uploaded and confirmed successfully');
   console.log(`Image URL: ${proofData.image.publicUrl}`);
 }
 
@@ -1253,6 +1292,8 @@ console.log(`Booking ${bookingToReject} rejected. Time slot is now available.`);
   "finalPrice": 1500.00,
   "bookingStatus": "pending",
   "paymentReference": null,
+  "paymentProofImageId": "ece127b1-f814-40bd-8fe9-2ef003e4161b",
+  "paymentProofImageUrl": "https://cdn.example.com/booking/19/ece127b1-f814-40bd-8fe9-2ef003e4161b.jpg",
   "cancellationReason": null,
   "expiresAt": "2025-01-16T10:30:00.000Z",
   "createdAt": "2025-01-15T10:30:00.000Z",
@@ -1274,6 +1315,7 @@ console.log(`Booking ${bookingToReject} rejected. Time slot is now available.`);
 - **bookingStatus**: Booking status (`pending`, `confirmed`, `rejected`, `cancelled`, `completed`, `expired`)
 - **paymentReference**: Payment transaction reference (null until payment confirmed)
 - **paymentProofImageId**: UUID of payment proof image (null if not uploaded yet)
+- **paymentProofImageUrl**: Public URL of payment proof image (null if not uploaded yet or image not found)
 - **cancellationReason**: Reason for cancellation/rejection (if cancelled/rejected)
 - **expiresAt**: Expiration timestamp for pending bookings (null after acceptance)
 - **createdAt**: Creation timestamp (ISO 8601)
@@ -1297,7 +1339,7 @@ Example:
 
 - **Pending Booking Flow**: Bookings are created with `pending` status and must be accepted by facility owner
 - **Bank Transfer Payment**: Users upload payment proof image after creating booking
-- **Payment Proof Upload**: Two-step process: get pre-signed URL, then upload image to S3
+- **Payment Proof Upload**: Three-step process: get pre-signed URL, upload image to S3, then confirm upload (required to update status from "pending" to "uploaded")
 - **Transaction-Safe Booking**: Backend prevents double booking using database transactions with row-level locking
 - **Automatic Price Calculation**: Price calculated from court price × duration
 - **Expiration Mechanism**: Pending bookings expire after configurable duration (default: 24 hours)

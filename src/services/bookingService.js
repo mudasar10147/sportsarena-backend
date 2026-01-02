@@ -8,12 +8,93 @@
 const Booking = require('../models/Booking');
 const Court = require('../models/Court');
 const Facility = require('../models/Facility');
+const Image = require('../models/Image');
+const { getPublicImageUrl } = require('../config/s3');
 const { pool } = require('../config/database');
 
 /**
  * Note: Booking creation is handled by transactionSafeBookingService
  * This service provides booking management operations only
  */
+
+/**
+ * Helper function to add payment proof image URL to a booking object
+ * @param {Object} booking - Booking object
+ * @returns {Promise<Object>} Booking object with paymentProofImageUrl added
+ * @private
+ */
+async function addPaymentProofUrl(booking) {
+  if (booking.paymentProofImageId) {
+    try {
+      const paymentProofImage = await Image.findById(booking.paymentProofImageId);
+      if (!paymentProofImage) {
+        console.warn(`[Payment Proof] Image not found: ${booking.paymentProofImageId} for booking ${booking.id}`);
+        booking.paymentProofImageUrl = null;
+        return booking;
+      }
+
+      // Image model returns 's3Key' (not 'storageKey')
+      const s3Key = paymentProofImage.s3Key;
+      if (s3Key) {
+        booking.paymentProofImageUrl = getPublicImageUrl(s3Key);
+        if (!booking.paymentProofImageUrl) {
+          console.warn(`[Payment Proof] Failed to generate URL for s3Key: ${s3Key} (CDN_BASE_URL may not be configured)`);
+        }
+      } else {
+        console.warn(`[Payment Proof] Image ${booking.paymentProofImageId} has no storageKey/s3Key (upload may not be completed)`);
+        booking.paymentProofImageUrl = null;
+      }
+    } catch (error) {
+      console.error(`[Payment Proof] Error fetching image ${booking.paymentProofImageId} for booking ${booking.id}:`, error.message);
+      booking.paymentProofImageUrl = null;
+    }
+  } else {
+    booking.paymentProofImageUrl = null;
+  }
+  return booking;
+}
+
+/**
+ * Helper function to add payment proof URLs to an array of bookings
+ * @param {Array<Object>} bookings - Array of booking objects
+ * @returns {Promise<Array<Object>>} Array of booking objects with paymentProofImageUrl added
+ * @private
+ */
+async function addPaymentProofUrls(bookings) {
+  // Fetch all payment proof images in parallel
+  const imagePromises = bookings.map(async (booking) => {
+    if (booking.paymentProofImageId) {
+      try {
+        const paymentProofImage = await Image.findById(booking.paymentProofImageId);
+        if (!paymentProofImage) {
+          console.warn(`[Payment Proof] Image not found: ${booking.paymentProofImageId} for booking ${booking.id}`);
+          booking.paymentProofImageUrl = null;
+          return booking;
+        }
+
+        // Image model returns 's3Key' (not 'storageKey')
+        const s3Key = paymentProofImage.s3Key;
+        if (s3Key) {
+          booking.paymentProofImageUrl = getPublicImageUrl(s3Key);
+          if (!booking.paymentProofImageUrl) {
+            console.warn(`[Payment Proof] Failed to generate URL for s3Key: ${s3Key} (CDN_BASE_URL may not be configured)`);
+          }
+        } else {
+          console.warn(`[Payment Proof] Image ${booking.paymentProofImageId} has no storageKey/s3Key (upload may not be completed)`);
+          booking.paymentProofImageUrl = null;
+        }
+      } catch (error) {
+        console.error(`[Payment Proof] Error fetching image ${booking.paymentProofImageId} for booking ${booking.id}:`, error.message);
+        booking.paymentProofImageUrl = null;
+      }
+    } else {
+      booking.paymentProofImageUrl = null;
+    }
+    return booking;
+  });
+
+  return Promise.all(imagePromises);
+}
 
 /**
  * Get booking details by ID
@@ -39,6 +120,9 @@ const getBookingDetails = async (bookingId, userId) => {
     error.errorCode = 'FORBIDDEN';
     throw error;
   }
+
+  // Add payment proof URL if image ID exists
+  await addPaymentProofUrl(booking);
 
   return booking;
 };
@@ -249,8 +333,11 @@ const getPendingBookingsForFacility = async (facilityId, ownerId, options = {}) 
     }
   }));
 
+  // Add payment proof URLs to all bookings
+  const bookingsWithUrls = await addPaymentProofUrls(bookings);
+
   return {
-    bookings,
+    bookings: bookingsWithUrls,
     total: parseInt(countResult.rows[0].total),
     limit,
     offset
@@ -466,8 +553,11 @@ const getUserBookings = async (userId, options = {}) => {
     }
   }));
 
+  // Add payment proof URLs to all bookings
+  const bookingsWithUrls = await addPaymentProofUrls(bookings);
+
   return {
-    bookings,
+    bookings: bookingsWithUrls,
     total: parseInt(countResult.rows[0].total),
     limit,
     offset

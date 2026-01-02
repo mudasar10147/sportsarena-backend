@@ -31,6 +31,7 @@ const { requireFacilityAdmin } = require('../../middleware/authorization');
 // Public routes (no authentication required)
 router.get('/', facilityController.listFacilities);
 router.get('/closest', facilityController.getClosestArenas);
+router.get('/cities', facilityController.getCities);
 
 // Nested FacilitySport routes (must come before /:id route)
 router.get('/:id/sports', facilitySportController.getFacilitySports);

@@ -38,19 +38,19 @@ class Image {
     } = imageData;
 
     // Validate entity type
-    const validEntityTypes = ['user', 'facility', 'court', 'sport', 'review'];
+    const validEntityTypes = ['user', 'facility', 'court', 'sport', 'review', 'booking'];
     if (!validEntityTypes.includes(entityType)) {
       throw new Error(`Invalid entity type. Must be one of: ${validEntityTypes.join(', ')}`);
     }
 
     // Validate image type
-    const validImageTypes = ['profile', 'cover', 'gallery', 'icon', 'banner', 'main'];
+    const validImageTypes = ['profile', 'cover', 'gallery', 'icon', 'banner', 'main', 'payment_proof'];
     if (!validImageTypes.includes(imageType)) {
       throw new Error(`Invalid image type. Must be one of: ${validImageTypes.join(', ')}`);
     }
 
     // Single-image types must be primary
-    const singleImageTypes = ['profile', 'cover', 'icon', 'banner', 'main'];
+    const singleImageTypes = ['profile', 'cover', 'icon', 'banner', 'main', 'payment_proof'];
     if (singleImageTypes.includes(imageType) && !isPrimary) {
       throw new Error(`${imageType} image type must be marked as primary`);
     }

@@ -7,6 +7,42 @@
 const Facility = require('../models/Facility');
 const FacilitySport = require('../models/FacilitySport');
 const Court = require('../models/Court');
+const availabilityService = require('./availabilityService');
+const availabilityFilterService = require('./availabilityFilterService');
+const timeNorm = require('../utils/timeNormalization');
+
+/**
+ * Check if a court has availability for a specific time slot
+ * @param {number} courtId - Court ID
+ * @param {Date|string} date - Date to check
+ * @param {number} startTimeMinutes - Start time in minutes since midnight
+ * @param {number} endTimeMinutes - End time in minutes since midnight
+ * @returns {Promise<boolean>} True if court has availability for the time slot
+ * @private
+ */
+async function checkCourtAvailability(courtId, date, startTimeMinutes, endTimeMinutes) {
+  try {
+    // Generate base availability
+    const baseAvailability = await availabilityService.generateBaseAvailability(courtId, date);
+    
+    // Filter by bookings and blocked ranges
+    const filteredAvailability = await availabilityFilterService.filterAvailability(baseAvailability);
+    
+    // Check if any block contains or overlaps with the requested time slot
+    // A block is available if it contains the entire requested time range
+    const hasAvailability = filteredAvailability.blocks.some(block => {
+      // Block contains the requested time if:
+      // block.startTime <= startTimeMinutes AND block.endTime >= endTimeMinutes
+      return block.startTime <= startTimeMinutes && block.endTime >= endTimeMinutes;
+    });
+    
+    return hasAvailability;
+  } catch (error) {
+    // If court not found or other error, return false
+    console.error(`Error checking availability for court ${courtId}:`, error.message);
+    return false;
+  }
+}
 
 /**
  * Get all facilities with optional filters
@@ -16,6 +52,9 @@ const Court = require('../models/Court');
  * @param {number} [filters.latitude] - Latitude for location-based search
  * @param {number} [filters.longitude] - Longitude for location-based search
  * @param {number} [filters.radiusKm] - Radius in kilometers
+ * @param {string} [filters.date] - Date for availability check (YYYY-MM-DD)
+ * @param {string} [filters.startTime] - Start time for availability check (HH:MM)
+ * @param {string} [filters.endTime] - End time for availability check (HH:MM)
  * @param {number} [filters.page=1] - Page number
  * @param {number} [filters.limit=50] - Items per page
  * @returns {Promise<Object>} Object with facilities array and pagination info
@@ -27,6 +66,9 @@ const getAllFacilities = async (filters = {}) => {
     latitude,
     longitude,
     radiusKm,
+    date,
+    startTime,
+    endTime,
     page = 1,
     limit = 50
   } = filters;
@@ -73,6 +115,72 @@ const getAllFacilities = async (filters = {}) => {
     facilities = facilities.filter(f => facilityIds.includes(f.id));
     // Update total count
     result.total = facilities.length;
+  }
+
+  // Filter by availability if date and time provided
+  if (date && startTime && endTime) {
+    try {
+      // Parse date
+      const bookingDate = date instanceof Date ? date : new Date(date);
+      if (isNaN(bookingDate.getTime())) {
+        throw new Error('Invalid date format');
+      }
+
+      // Parse times
+      const startTimeMinutes = timeNorm.parseTimeString(startTime);
+      const endTimeMinutes = timeNorm.parseTimeString(endTime);
+
+      // Validate time range
+      if (startTimeMinutes >= endTimeMinutes) {
+        throw new Error('Start time must be before end time');
+      }
+
+      // Check availability for each facility
+      const facilitiesWithAvailability = await Promise.all(
+        facilities.map(async (facility) => {
+          // Get all active courts for this facility
+          const courts = await Court.findByFacilityId(facility.id, { isActive: true });
+          
+          // Check if any court has availability
+          const availabilityChecks = await Promise.all(
+            courts.map(court => 
+              checkCourtAvailability(court.id, bookingDate, startTimeMinutes, endTimeMinutes)
+            )
+          );
+          
+          const hasAvailableCourt = availabilityChecks.some(available => available);
+          
+          // Return facility with availability info
+          return {
+            ...facility,
+            hasAvailability: hasAvailableCourt,
+            availableCourtsCount: availabilityChecks.filter(a => a).length
+          };
+        })
+      );
+
+      // Filter to only facilities with availability
+      facilities = facilitiesWithAvailability.filter(f => f.hasAvailability);
+      
+      // Remove availability metadata from response (or keep it if frontend needs it)
+      facilities = facilities.map(({ hasAvailability, availableCourtsCount, ...facility }) => ({
+        ...facility,
+        ...(availableCourtsCount > 0 && { availableCourtsCount }) // Include count if > 0
+      }));
+
+      // Update total count
+      result.total = facilities.length;
+    } catch (error) {
+      // If availability check fails, return empty result
+      console.error('Error filtering by availability:', error.message);
+      return {
+        facilities: [],
+        total: 0,
+        limit,
+        offset,
+        page
+      };
+    }
   }
 
   return {
@@ -214,6 +322,37 @@ const updateFacility = async (facilityId, updateData, userId) => {
 };
 
 /**
+ * Get list of unique cities where facilities exist
+ * @param {Object} [options={}] - Query options
+ * @param {boolean} [options.isActive=true] - Only include cities with active facilities
+ * @returns {Promise<Array>} Array of city objects with facility count
+ */
+const getCities = async (options = {}) => {
+  const { isActive = true } = options;
+
+  const { pool } = require('../config/database');
+
+  const query = `
+    SELECT 
+      city,
+      COUNT(*) as facility_count
+    FROM facilities
+    WHERE city IS NOT NULL
+      AND city != ''
+      ${isActive ? 'AND is_active = TRUE' : ''}
+    GROUP BY city
+    ORDER BY city ASC
+  `;
+
+  const result = await pool.query(query);
+
+  return result.rows.map(row => ({
+    city: row.city,
+    facilityCount: parseInt(row.facility_count, 10)
+  }));
+};
+
+/**
  * Get closest facilities to a given location with pagination
  * @param {number} latitude - Latitude coordinate
  * @param {number} longitude - Longitude coordinate
@@ -303,6 +442,7 @@ module.exports = {
   getFacilityDetails,
   createFacility,
   updateFacility,
-  getClosestFacilities
+  getClosestFacilities,
+  getCities
 };
 

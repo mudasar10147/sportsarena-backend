@@ -18,6 +18,7 @@
 const { sendError } = require('../utils/response');
 const User = require('../models/User');
 const { checkProfileCompleteness } = require('../services/userService');
+const { pool } = require('../config/database');
 
 /**
  * Check if user profile is complete
@@ -43,8 +44,34 @@ const requireCompleteProfile = async (req, res, next) => {
       return sendError(res, 'User not found', 'USER_NOT_FOUND', 404);
     }
 
+    // Check if password_hash exists in database (without returning the hash)
+    // This is needed because User.findById() doesn't include password_hash for security
+    let hasPassword = false;
+    if (user.auth_provider === 'email' || !user.auth_provider) {
+      try {
+        const passwordCheckQuery = `
+          SELECT password_hash IS NOT NULL as has_password
+          FROM users
+          WHERE id = $1
+        `;
+        const passwordResult = await pool.query(passwordCheckQuery, [req.userId]);
+        hasPassword = passwordResult.rows[0]?.has_password || false;
+      } catch (error) {
+        // If query fails, fall back to checking signup_status
+        // Active email-based users should have a password
+        hasPassword = user.signup_status === 'active';
+        console.warn(`[Profile Completeness Middleware] Failed to check password for user ${req.userId}, using signup_status fallback:`, error.message);
+      }
+    }
+
+    // Add hasPassword to user object for completeness check
+    const userWithPassword = {
+      ...user,
+      password_hash: hasPassword ? 'exists' : null // Use 'exists' as placeholder, not actual hash
+    };
+
     // Check profile completeness
-    const completeness = checkProfileCompleteness(user);
+    const completeness = checkProfileCompleteness(userWithPassword);
 
     // If profile is incomplete, block access
     if (!completeness.isComplete) {

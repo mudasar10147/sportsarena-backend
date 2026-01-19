@@ -27,24 +27,25 @@ const router = express.Router();
 const courtController = require('../../controllers/courtController');
 const availabilityController = require('../../controllers/availabilityController');
 const availabilityRuleController = require('../../controllers/availabilityRuleController');
-const { authenticate } = require('../../middleware/auth');
+const { authenticate, optionalAuthenticate } = require('../../middleware/auth');
 const { requireFacilityAdmin } = require('../../middleware/authorization');
+const { requireCompleteProfile } = require('../../middleware/profileCompleteness');
 
 // Protected route (authentication and facility_admin role required)
-router.put('/:id', authenticate, requireFacilityAdmin, courtController.updateCourt);
+router.put('/:id', authenticate, requireCompleteProfile, requireFacilityAdmin, courtController.updateCourt);
 
 // Availability rules management routes (protected - admin only)
 // IMPORTANT: More specific routes must come before less specific ones
-router.get('/:id/availability/rules', authenticate, requireFacilityAdmin, availabilityRuleController.getAvailabilityRules);
-router.post('/:id/availability/rules', authenticate, requireFacilityAdmin, availabilityRuleController.createAvailabilityRule);
-router.put('/:id/availability/rules/:ruleId', authenticate, requireFacilityAdmin, availabilityRuleController.updateAvailabilityRule);
-router.delete('/:id/availability/rules/:ruleId', authenticate, requireFacilityAdmin, availabilityRuleController.deleteAvailabilityRule);
+router.get('/:id/availability/rules', authenticate, requireCompleteProfile, requireFacilityAdmin, availabilityRuleController.getAvailabilityRules);
+router.post('/:id/availability/rules', authenticate, requireCompleteProfile, requireFacilityAdmin, availabilityRuleController.createAvailabilityRule);
+router.put('/:id/availability/rules/:ruleId', authenticate, requireCompleteProfile, requireFacilityAdmin, availabilityRuleController.updateAvailabilityRule);
+router.delete('/:id/availability/rules/:ruleId', authenticate, requireCompleteProfile, requireFacilityAdmin, availabilityRuleController.deleteAvailabilityRule);
 
-// Availability routes (public - no authentication required)
+// Availability routes (public - no authentication required, but check profile completeness if authenticated)
 // IMPORTANT: More specific routes must come before less specific ones
-router.get('/:id/availability/range', availabilityController.getAvailabilityRange);
-router.get('/:id/availability/slots', availabilityController.getAvailabilitySlots);
-router.get('/:id/availability', availabilityController.getAvailability);
+router.get('/:id/availability/range', optionalAuthenticate, requireCompleteProfile, availabilityController.getAvailabilityRange);
+router.get('/:id/availability/slots', optionalAuthenticate, requireCompleteProfile, availabilityController.getAvailabilitySlots);
+router.get('/:id/availability', optionalAuthenticate, requireCompleteProfile, availabilityController.getAvailability);
 
 module.exports = router;
 

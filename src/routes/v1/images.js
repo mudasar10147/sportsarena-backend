@@ -28,27 +28,29 @@ const imageController = require('../../controllers/imageController');
 const imageModerationController = require('../../controllers/imageModerationController');
 const { authenticate } = require('../../middleware/auth');
 const { requirePlatformAdmin } = require('../../middleware/authorization');
+const { requireCompleteProfile } = require('../../middleware/profileCompleteness');
 
 // All routes require authentication
 // Specific routes must come before parameterized routes to avoid conflicts
-router.post('/', authenticate, imageController.createImage);
-router.get('/limits/:entityType', authenticate, imageController.getImageLimits);
-// Profile image replacement route (must come before :entityType/:entityId to avoid conflicts)
+// Profile image operations are allowed for incomplete profiles (needed for completion)
 router.put('/profile/user/:userId', authenticate, imageController.replaceProfileImage);
-router.get('/:entityType/:entityId', authenticate, imageController.getEntityImages);
-// :imageId routes (must come after :entityType/:entityId to avoid conflicts)
-router.get('/id/:imageId', authenticate, imageController.getImageById);
-router.put('/id/:imageId', authenticate, imageController.updateImage);
-router.delete('/id/:imageId', authenticate, imageController.deleteImage);
-// S3 upload routes
-router.post('/id/:imageId/presign', authenticate, imageController.generatePresignedUrl);
-router.post('/id/:imageId/confirm-upload', authenticate, imageController.confirmUpload);
+router.post('/id/:imageId/presign', authenticate, imageController.generatePresignedUrl); // Allow for profile images
+router.post('/id/:imageId/confirm-upload', authenticate, imageController.confirmUpload); // Allow for profile images
 
-// Admin moderation routes (require platform_admin role)
-router.get('/moderation/pending', authenticate, requirePlatformAdmin, imageModerationController.getPendingModeration);
-router.get('/moderation/stats', authenticate, requirePlatformAdmin, imageModerationController.getModerationStats);
-router.post('/moderation/:imageId/approve', authenticate, requirePlatformAdmin, imageModerationController.approveImage);
-router.post('/moderation/:imageId/reject', authenticate, requirePlatformAdmin, imageModerationController.rejectImage);
+// All other image operations require complete profile
+router.post('/', authenticate, requireCompleteProfile, imageController.createImage);
+router.get('/limits/:entityType', authenticate, requireCompleteProfile, imageController.getImageLimits);
+router.get('/:entityType/:entityId', authenticate, requireCompleteProfile, imageController.getEntityImages);
+// :imageId routes (must come after :entityType/:entityId to avoid conflicts)
+router.get('/id/:imageId', authenticate, requireCompleteProfile, imageController.getImageById);
+router.put('/id/:imageId', authenticate, requireCompleteProfile, imageController.updateImage);
+router.delete('/id/:imageId', authenticate, requireCompleteProfile, imageController.deleteImage);
+
+// Admin moderation routes (require platform_admin role and complete profile)
+router.get('/moderation/pending', authenticate, requireCompleteProfile, requirePlatformAdmin, imageModerationController.getPendingModeration);
+router.get('/moderation/stats', authenticate, requireCompleteProfile, requirePlatformAdmin, imageModerationController.getModerationStats);
+router.post('/moderation/:imageId/approve', authenticate, requireCompleteProfile, requirePlatformAdmin, imageModerationController.approveImage);
+router.post('/moderation/:imageId/reject', authenticate, requireCompleteProfile, requirePlatformAdmin, imageModerationController.rejectImage);
 
 module.exports = router;
 

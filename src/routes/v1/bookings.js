@@ -25,16 +25,17 @@ const router = express.Router();
 const bookingController = require('../../controllers/bookingController');
 const { authenticate } = require('../../middleware/auth');
 const { requireFacilityAdmin } = require('../../middleware/authorization');
+const { requireCompleteProfile } = require('../../middleware/profileCompleteness');
 
-// All routes require authentication
-router.post('/', authenticate, bookingController.createBooking);
-router.get('/:id', authenticate, bookingController.getBookingDetails);
-router.put('/:id/confirm', authenticate, bookingController.confirmBooking); // DEPRECATED
-router.put('/:id/accept', authenticate, requireFacilityAdmin, bookingController.acceptBooking);
-router.put('/:id/reject', authenticate, requireFacilityAdmin, bookingController.rejectBooking);
-router.put('/:id/cancel', authenticate, bookingController.cancelBooking);
-router.put('/:id/payment-proof', authenticate, bookingController.uploadPaymentProof);
-router.delete('/:id/payment-proof', authenticate, bookingController.removePaymentProof);
+// All routes require authentication and complete profile
+router.post('/', authenticate, requireCompleteProfile, bookingController.createBooking);
+router.get('/:id', authenticate, requireCompleteProfile, bookingController.getBookingDetails);
+router.put('/:id/confirm', authenticate, requireCompleteProfile, bookingController.confirmBooking); // DEPRECATED
+router.put('/:id/accept', authenticate, requireCompleteProfile, requireFacilityAdmin, bookingController.acceptBooking);
+router.put('/:id/reject', authenticate, requireCompleteProfile, requireFacilityAdmin, bookingController.rejectBooking);
+router.put('/:id/cancel', authenticate, requireCompleteProfile, bookingController.cancelBooking);
+router.put('/:id/payment-proof', authenticate, requireCompleteProfile, bookingController.uploadPaymentProof);
+router.delete('/:id/payment-proof', authenticate, requireCompleteProfile, bookingController.removePaymentProof);
 
 module.exports = router;
 

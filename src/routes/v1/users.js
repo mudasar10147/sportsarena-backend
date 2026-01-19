@@ -21,6 +21,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../../controllers/userController');
 const { authenticate, optionalAuthenticate } = require('../../middleware/auth');
+const { requireCompleteProfile } = require('../../middleware/profileCompleteness');
 const { 
   emailVerificationRateLimiter, 
   emailVerificationAttemptRateLimiter 
@@ -54,7 +55,7 @@ router.get('/profile', authenticate, userController.getProfile);
 router.put('/profile', authenticate, userController.updateProfile);
 router.post('/complete-signup', authenticate, userController.completeSignup);
 router.put('/change-password', authenticate, userController.changePassword);
-router.get('/bookings', authenticate, userController.getUserBookings);
+router.get('/bookings', authenticate, requireCompleteProfile, userController.getUserBookings);
 router.get('/verification-status', authenticate, userController.getVerificationStatus);
 
 // Delete user route (must come after specific routes to avoid conflicts)

@@ -25,31 +25,32 @@ const facilityController = require('../../controllers/facilityController');
 const facilitySportController = require('../../controllers/facilitySportController');
 const courtController = require('../../controllers/courtController');
 const bookingController = require('../../controllers/bookingController');
-const { authenticate } = require('../../middleware/auth');
+const { authenticate, optionalAuthenticate } = require('../../middleware/auth');
 const { requireFacilityAdmin } = require('../../middleware/authorization');
+const { requireCompleteProfile } = require('../../middleware/profileCompleteness');
 
-// Public routes (no authentication required)
-router.get('/', facilityController.listFacilities);
-router.get('/closest', facilityController.getClosestArenas);
-router.get('/cities', facilityController.getCities);
+// Public routes (no authentication required, but check profile completeness if authenticated)
+router.get('/', optionalAuthenticate, requireCompleteProfile, facilityController.listFacilities);
+router.get('/closest', optionalAuthenticate, requireCompleteProfile, facilityController.getClosestArenas);
+router.get('/cities', optionalAuthenticate, requireCompleteProfile, facilityController.getCities);
 
 // Nested FacilitySport routes (must come before /:id route)
-router.get('/:id/sports', facilitySportController.getFacilitySports);
-router.post('/:id/sports', authenticate, requireFacilityAdmin, facilitySportController.assignSportToFacility);
+router.get('/:id/sports', optionalAuthenticate, requireCompleteProfile, facilitySportController.getFacilitySports);
+router.post('/:id/sports', authenticate, requireCompleteProfile, requireFacilityAdmin, facilitySportController.assignSportToFacility);
 
 // Nested Court routes (must come before /:id route)
-router.get('/:id/courts', courtController.getFacilityCourts);
-router.post('/:id/courts', authenticate, requireFacilityAdmin, courtController.createCourt);
+router.get('/:id/courts', optionalAuthenticate, requireCompleteProfile, courtController.getFacilityCourts);
+router.post('/:id/courts', authenticate, requireCompleteProfile, requireFacilityAdmin, courtController.createCourt);
 
 // Booking management routes (must come before /:id route)
-router.get('/:id/bookings/pending', authenticate, requireFacilityAdmin, bookingController.getPendingBookingsForFacility);
+router.get('/:id/bookings/pending', authenticate, requireCompleteProfile, requireFacilityAdmin, bookingController.getPendingBookingsForFacility);
 
 // Facility routes
-router.get('/:id', facilityController.getFacilityDetails);
+router.get('/:id', optionalAuthenticate, requireCompleteProfile, facilityController.getFacilityDetails);
 
 // Protected routes (authentication and facility_admin role required)
-router.post('/', authenticate, requireFacilityAdmin, facilityController.createFacility);
-router.put('/:id', authenticate, requireFacilityAdmin, facilityController.updateFacility);
+router.post('/', authenticate, requireCompleteProfile, requireFacilityAdmin, facilityController.createFacility);
+router.put('/:id', authenticate, requireCompleteProfile, requireFacilityAdmin, facilityController.updateFacility);
 
 module.exports = router;
 

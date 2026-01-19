@@ -15,16 +15,17 @@
 const express = require('express');
 const router = express.Router();
 const sportController = require('../../controllers/sportController');
-const { authenticate } = require('../../middleware/auth');
+const { authenticate, optionalAuthenticate } = require('../../middleware/auth');
 const { requirePlatformAdmin } = require('../../middleware/authorization');
+const { requireCompleteProfile } = require('../../middleware/profileCompleteness');
 
-// Public routes (no authentication required)
-router.get('/', sportController.listSports);
-router.get('/:id', sportController.getSportDetails);
+// Public routes (no authentication required, but check profile completeness if authenticated)
+router.get('/', optionalAuthenticate, requireCompleteProfile, sportController.listSports);
+router.get('/:id', optionalAuthenticate, requireCompleteProfile, sportController.getSportDetails);
 
 // Protected route (authentication and platform_admin role required)
 // Note: Only platform admins can create sports as they are global/shared resources
-router.post('/', authenticate, requirePlatformAdmin, sportController.createSport);
+router.post('/', authenticate, requireCompleteProfile, requirePlatformAdmin, sportController.createSport);
 
 module.exports = router;
 

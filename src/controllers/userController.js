@@ -138,13 +138,23 @@ const login = async (req, res, next) => {
  * Get user profile
  * GET /api/v1/users/profile
  * Requires authentication
+ * 
+ * Returns profile data with completeness flag.
+ * If profile is incomplete, includes missingFields array.
+ * Frontend should show profile completion page instead of logging out.
  */
 const getProfile = async (req, res, next) => {
   try {
     const userId = req.userId;
     const user = await userService.getProfile(userId);
 
-    return sendSuccess(res, user, 'Profile retrieved successfully');
+    // Prepare message based on profile completeness
+    let message = 'Profile retrieved successfully';
+    if (!user.profileComplete) {
+      message = 'Profile retrieved. Please complete your profile to continue.';
+    }
+
+    return sendSuccess(res, user, message);
   } catch (error) {
     next(error);
   }

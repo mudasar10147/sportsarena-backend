@@ -192,9 +192,44 @@ const login = async (email, password) => {
 };
 
 /**
+ * Check if user profile is complete
+ * Profile is considered complete if:
+ * - For email-based users: password_hash, first_name, and last_name are set
+ * - For OAuth users (Google): first_name and last_name are set (password_hash is NULL)
+ * @param {Object} user - User object
+ * @returns {Object} { isComplete: boolean, missingFields: string[] }
+ */
+const checkProfileCompleteness = (user) => {
+  const missingFields = [];
+
+  // Check first_name
+  if (!user.first_name || user.first_name.trim() === '') {
+    missingFields.push('firstName');
+  }
+
+  // Check last_name
+  if (!user.last_name || user.last_name.trim() === '') {
+    missingFields.push('lastName');
+  }
+
+  // For email-based users, check password_hash
+  if (user.auth_provider === 'email' || !user.auth_provider) {
+    if (!user.password_hash) {
+      missingFields.push('password');
+    }
+  }
+
+  // Profile is complete if no missing fields
+  return {
+    isComplete: missingFields.length === 0,
+    missingFields
+  };
+};
+
+/**
  * Get user profile
  * @param {number} userId - User ID
- * @returns {Promise<Object>} User profile object with avatar URL
+ * @returns {Promise<Object>} User profile object with avatar URL and completeness info
  * @throws {Error} If user not found
  */
 const getProfile = async (userId) => {
@@ -206,6 +241,9 @@ const getProfile = async (userId) => {
     error.errorCode = 'USER_NOT_FOUND';
     throw error;
   }
+
+  // Check profile completeness (but don't throw error - return with flag)
+  const completeness = checkProfileCompleteness(user);
 
   // Fetch user's profile image to get avatar URL
   // Query directly for primary profile image that has been uploaded
@@ -245,10 +283,12 @@ const getProfile = async (userId) => {
     console.warn(`[User Profile] Failed to fetch profile image for user ${userId}:`, error.message);
   }
 
-  // Add avatar to user object
+  // Add avatar and profile completeness info to user object
   return {
     ...user,
-    avatar
+    avatar,
+    profileComplete: completeness.isComplete,
+    missingFields: completeness.isComplete ? [] : completeness.missingFields
   };
 };
 
@@ -803,6 +843,7 @@ module.exports = {
   login,
   loginOrCreateGoogleUser,
   getProfile,
+  checkProfileCompleteness,
   updateProfile,
   completeSignup,
   changePassword,

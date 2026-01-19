@@ -189,13 +189,22 @@ Get the authenticated user's profile information.
 
 **Requires Authentication:** Yes
 
+**Profile Completeness Check:**
+- The endpoint automatically checks if the user's profile is complete
+- Profile is considered complete if:
+  - **Email-based users**: `firstName`, `lastName`, and `password` are set
+  - **OAuth users (Google)**: `firstName` and `lastName` are set (password not required)
+- **Always returns 200 OK** with profile data, but includes `profileComplete` flag
+- If profile is incomplete, response includes `missingFields` array
+- Frontend should show profile completion page instead of logging out
+
 #### Headers
 
 ```
 Authorization: Bearer <your-jwt-token>
 ```
 
-#### Success Response (200 OK)
+#### Success Response (200 OK) - Complete Profile
 
 ```json
 {
@@ -204,17 +213,100 @@ Authorization: Bearer <your-jwt-token>
   "data": {
     "id": 1,
     "email": "john@example.com",
+    "username": "johndoe",
     "firstName": "John",
     "lastName": "Doe",
     "phone": "+923001234567",
     "role": "player",
     "isActive": true,
-    "emailVerified": false,
+    "emailVerified": true,
+    "signupStatus": "active",
+    "authProvider": "email",
+    "avatar": "https://...",
+    "profileComplete": true,
+    "missingFields": [],
     "createdAt": "2025-01-15T10:30:00.000Z",
     "updatedAt": "2025-01-15T10:30:00.000Z"
   }
 }
 ```
+
+#### Success Response (200 OK) - Incomplete Profile
+
+When profile is incomplete, the endpoint still returns 200 OK but includes completeness information:
+
+```json
+{
+  "success": true,
+  "message": "Profile retrieved. Please complete your profile to continue.",
+  "data": {
+    "id": 1,
+    "email": "john@example.com",
+    "username": "johndoe",
+    "firstName": null,
+    "lastName": null,
+    "phone": null,
+    "role": "player",
+    "isActive": true,
+    "emailVerified": true,
+    "signupStatus": "pending_completion",
+    "authProvider": "email",
+    "avatar": null,
+    "profileComplete": false,
+    "missingFields": ["firstName", "lastName", "password"],
+    "createdAt": "2025-01-15T10:30:00.000Z",
+    "updatedAt": "2025-01-15T10:30:00.000Z"
+  }
+}
+```
+
+**Response Fields:**
+- `profileComplete`: Boolean indicating if profile is complete
+- `missingFields`: Array of missing required field names (`firstName`, `lastName`, `password`)
+- `signupStatus`: Current signup status (`pending_completion`, `active`)
+
+**Frontend Handling:**
+When `profileComplete` is `false`:
+1. Show profile completion page/modal
+2. Display message: "Your profile is incomplete. Please complete your signup process."
+3. Show button: "Complete Profile" or "Go to Signup"
+4. Navigate to profile completion form (`/complete-signup`)
+5. User fills: firstName, lastName, password
+6. After completion, user can use the app normally
+7. **Do NOT log out the user** - keep them authenticated
+
+**401 Unauthorized - Missing/Invalid Token**
+```json
+{
+  "success": false,
+  "message": "Authentication required",
+  "error_code": "UNAUTHORIZED"
+}
+```
+
+**404 Not Found - User Not Found**
+```json
+{
+  "success": false,
+  "message": "User not found",
+  "error_code": "USER_NOT_FOUND"
+}
+```
+
+#### Profile Completion Flow
+
+**Step 1: User accesses profile (incomplete)**
+- `GET /api/v1/users/profile` returns `profileComplete: false`
+- Frontend shows: "Your profile is incomplete. Please complete your signup process."
+- Button: "Complete Profile" → Navigate to `/complete-signup`
+
+**Step 2: User completes profile**
+- `POST /api/v1/users/complete-signup` with `firstName`, `lastName`, `password`
+- Profile is updated, `signupStatus` changes to `active`
+
+**Step 3: User can use the app**
+- `GET /api/v1/users/profile` now returns `profileComplete: true`
+- User can access all features normally
 
 #### Error Responses
 

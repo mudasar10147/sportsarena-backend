@@ -48,8 +48,9 @@ const sendCreated = (res, data = null, message = 'Resource created successfully'
  * @param {string} message - Error message
  * @param {string} errorCode - Custom error code for client handling
  * @param {number} statusCode - HTTP status code (default: 400)
+ * @param {Object} additionalData - Additional error data (optional)
  */
-const sendError = (res, message = 'An error occurred', errorCode = null, statusCode = 400) => {
+const sendError = (res, message = 'An error occurred', errorCode = null, statusCode = 400, additionalData = null) => {
   const response = {
     success: false,
     message
@@ -57,6 +58,10 @@ const sendError = (res, message = 'An error occurred', errorCode = null, statusC
 
   if (errorCode) {
     response.error_code = errorCode;
+  }
+
+  if (additionalData) {
+    Object.assign(response, additionalData);
   }
 
   return res.status(statusCode).json(response);

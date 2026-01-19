@@ -689,6 +689,68 @@ Authorization: Bearer <jwt-token>
 
 ---
 
+## Profile Completeness Requirement
+
+### Important Note
+
+After email verification (Step 3), users receive a JWT token and can access the application. However, **the profile must be completed before users can fully use the system**.
+
+### Profile Completeness Check
+
+The `GET /api/v1/users/profile` endpoint automatically checks if the user's profile is complete:
+
+**Required Fields for Email-Based Users:**
+- `firstName` (required)
+- `lastName` (required)
+- `password` (required)
+
+**Required Fields for OAuth Users (Google):**
+- `firstName` (required)
+- `lastName` (required)
+- `password` (not required - OAuth users don't have passwords)
+
+### Behavior
+
+- **Complete Profile**: Returns user profile data with `profileComplete: true` (200 OK)
+- **Incomplete Profile**: Returns user profile data with `profileComplete: false` and `missingFields` array (200 OK)
+- **Frontend Action**: Should show profile completion page/modal instead of logging out
+
+### Example Response - Incomplete Profile
+
+```json
+{
+  "success": true,
+  "message": "Profile retrieved. Please complete your profile to continue.",
+  "data": {
+    "id": 1,
+    "email": "john@example.com",
+    "username": "johndoe",
+    "firstName": null,
+    "lastName": null,
+    "phone": null,
+    "profileComplete": false,
+    "missingFields": ["firstName", "lastName", "password"],
+    "signupStatus": "pending_completion",
+    ...
+  }
+}
+```
+
+### Frontend Implementation
+
+When the frontend receives `profileComplete: false`:
+
+1. **Keep user authenticated** (do NOT log out)
+2. Show profile completion page/modal with message: "Your profile is incomplete. Please complete your signup process."
+3. Display button: "Complete Profile" or "Go to Signup"
+4. Navigate to profile completion form (`/complete-signup`)
+5. User fills: `firstName`, `lastName`, `password`
+6. Submit via `POST /api/v1/users/complete-signup`
+7. After successful completion, user can use the app normally
+8. Re-fetch profile to verify `profileComplete: true`
+
+---
+
 ### 5. Get Verification Status
 
 **`GET /api/v1/users/verification-status`**
@@ -838,6 +900,7 @@ All errors follow a consistent format:
 | `UNAUTHORIZED` | 401 | Authentication required |
 | `USER_NOT_FOUND` | 404 | User not found |
 | `UPDATE_FAILED` | 500 | Update operation failed |
+| `PROFILE_INCOMPLETE` | 200 | User profile is incomplete (returned as flag in response, not error) |
 
 ---
 
@@ -925,6 +988,9 @@ All errors follow a consistent format:
 - [ ] Test incomplete account resume
 - [ ] Test unverified account resend
 - [ ] Test cleanup job (expired codes)
+- [ ] Test profile completeness check (GET /api/v1/users/profile)
+- [ ] Verify incomplete profile returns `PROFILE_INCOMPLETE` error
+- [ ] Verify frontend logs out user when profile is incomplete
 
 ### Example Test Flow
 

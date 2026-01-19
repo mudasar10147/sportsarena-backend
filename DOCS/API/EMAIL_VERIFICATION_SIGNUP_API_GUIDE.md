@@ -749,6 +749,20 @@ When the frontend receives `profileComplete: false`:
 7. After successful completion, user can use the app normally
 8. Re-fetch profile to verify `profileComplete: true`
 
+### Data Access Restriction
+
+**Important:** Users with incomplete profiles cannot access any application data:
+
+- All data endpoints return `403 Forbidden` with `PROFILE_INCOMPLETE` error
+- Blocked endpoints include: facilities, courts, bookings, sports, availability, images
+- Only profile-related endpoints remain accessible (profile, complete-signup, profile image upload)
+
+**Frontend should:**
+- Show completion prompt when `profileComplete: false`
+- Block navigation to data pages (facilities, courts, bookings, etc.)
+- Show message: "Please complete your profile to access this feature"
+- Redirect to profile completion page
+
 ---
 
 ### 5. Get Verification Status

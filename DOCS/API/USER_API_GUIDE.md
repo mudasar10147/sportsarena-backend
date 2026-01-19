@@ -300,13 +300,45 @@ When `profileComplete` is `false`:
 - Frontend shows: "Your profile is incomplete. Please complete your signup process."
 - Button: "Complete Profile" → Navigate to `/complete-signup`
 
-**Step 2: User completes profile**
+**Step 2: User tries to access data (blocked)**
+- All data endpoints return `403 Forbidden` with `PROFILE_INCOMPLETE` error
+- Endpoints blocked: facilities, courts, bookings, sports, availability, images (except profile image)
+- User cannot access any application data until profile is complete
+
+**Step 3: User completes profile**
 - `POST /api/v1/users/complete-signup` with `firstName`, `lastName`, `password`
 - Profile is updated, `signupStatus` changes to `active`
 
-**Step 3: User can use the app**
+**Step 4: User can use the app**
 - `GET /api/v1/users/profile` now returns `profileComplete: true`
+- All data endpoints are now accessible
 - User can access all features normally
+
+#### Blocked Endpoints (Incomplete Profile)
+
+When profile is incomplete, the following endpoints return `403 Forbidden`:
+
+- `GET /api/v1/facilities` - List facilities
+- `GET /api/v1/facilities/:id` - Facility details
+- `GET /api/v1/facilities/:id/courts` - Facility courts
+- `GET /api/v1/facilities/:id/sports` - Facility sports
+- `GET /api/v1/courts/:id/availability` - Court availability
+- `GET /api/v1/bookings` - User bookings
+- `POST /api/v1/bookings` - Create booking
+- `GET /api/v1/sports` - List sports
+- `GET /api/v1/images` - Get images (except profile image)
+- All other data endpoints
+
+#### Allowed Endpoints (Incomplete Profile)
+
+These endpoints remain accessible even with incomplete profile:
+
+- `GET /api/v1/users/profile` - View profile (to see what's missing)
+- `POST /api/v1/users/complete-signup` - Complete profile
+- `GET /api/v1/users/verification-status` - Check verification status
+- `PUT /api/v1/images/profile/user/:userId` - Upload profile image
+- `POST /api/v1/images/id/:imageId/presign` - Get pre-signed URL (for profile image)
+- `POST /api/v1/images/id/:imageId/confirm-upload` - Confirm upload (for profile image)
 
 #### Error Responses
 

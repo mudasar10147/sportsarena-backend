@@ -40,34 +40,48 @@ const checkSignupAndSendCode = async (username, email, ipAddress = null, userAge
   }
   const normalizedEmail = emailValidation.email;
 
-  // Check username uniqueness
-  const usernameExists = await User.usernameExists(normalizedUsername);
-  if (usernameExists) {
-    const error = new Error('Username is already taken. Please choose another.');
-    error.statusCode = 409;
-    error.errorCode = 'USERNAME_EXISTS';
-    throw error;
-  }
-
-  // Check email and account status
+  // Check email and account status first (to handle resume signup)
   const accountStatus = await User.getAccountStatus(normalizedEmail);
 
+  // Handle email conflicts
   if (accountStatus) {
-    // Email exists - handle different states
     if (accountStatus.accountState === 'complete') {
-      // Email exists, verified, complete account
+      // Email exists, verified, complete account - block signup
       const error = new Error('An account with this email already exists. Please login.');
       error.statusCode = 409;
       error.errorCode = 'EMAIL_EXISTS_COMPLETE';
       throw error;
-    } else if (accountStatus.accountState === 'incomplete') {
-      // Email exists, verified, incomplete account (no password)
-      // Allow resuming signup - send verification code
-      // Note: We'll allow them to use a different username if needed
-      // But for now, we'll send code to verify and they can complete signup
-    } else if (accountStatus.accountState === 'unverified') {
-      // Email exists but not verified - allow resend verification
-      // Continue to send code
+    }
+    // Email exists but incomplete or unverified - allow resume signup
+    // Continue to check username below
+  }
+
+  // Check username uniqueness
+  // If email matches incomplete account, username can be updated during verification
+  // Otherwise, check if username is available
+  const usernameAccountStatus = await User.getUsernameAccountStatus(normalizedUsername);
+  
+  if (usernameAccountStatus) {
+    // Username exists - check if we can allow it
+    if (usernameAccountStatus.accountState === 'complete') {
+      // Username belongs to a complete account - block
+      const error = new Error('Username is already taken. Please choose another.');
+      error.statusCode = 409;
+      error.errorCode = 'USERNAME_EXISTS';
+      throw error;
+    }
+    
+    // Username belongs to incomplete/unverified account
+    if (accountStatus && accountStatus.email === usernameAccountStatus.email) {
+      // Same email - this is resume signup, allow it
+      // Username can be same or different (will be updated during verification if different)
+    } else {
+      // Different email - username is taken by another account (even if incomplete)
+      // Block to prevent unique constraint violation during account creation
+      const error = new Error('Username is already taken. Please choose another.');
+      error.statusCode = 409;
+      error.errorCode = 'USERNAME_EXISTS';
+      throw error;
     }
   }
 

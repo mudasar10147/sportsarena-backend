@@ -282,6 +282,55 @@ class User {
   }
 
   /**
+   * Check if username exists and get its account status
+   * @param {string} username - Username to check
+   * @returns {Promise<Object|null>} Account info with completeness status or null if username doesn't exist
+   */
+  static async getUsernameAccountStatus(username) {
+    const query = `
+      SELECT 
+        id,
+        email,
+        username,
+        email_verified,
+        signup_status,
+        password_hash IS NOT NULL as has_password,
+        is_active
+      FROM users
+      WHERE username = $1
+      LIMIT 1
+    `;
+    const result = await pool.query(query, [username]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    
+    // Determine account state
+    let accountState = 'not_found';
+    if (row.email_verified && row.has_password && row.signup_status === 'active') {
+      accountState = 'complete';
+    } else if (row.email_verified && !row.has_password) {
+      accountState = 'incomplete';
+    } else if (!row.email_verified) {
+      accountState = 'unverified';
+    }
+
+    return {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      emailVerified: row.email_verified,
+      signupStatus: row.signup_status,
+      hasPassword: row.has_password,
+      isActive: row.is_active,
+      accountState
+    };
+  }
+
+  /**
    * Get account status for email
    * Returns account information including signup_status, email_verified, and password status
    * @param {string} email - Email to check

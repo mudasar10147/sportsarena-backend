@@ -242,8 +242,34 @@ const getProfile = async (userId) => {
     throw error;
   }
 
+  // Check if password_hash exists in database (without returning the hash)
+  // This is needed because User.findById() doesn't include password_hash for security
+  let hasPassword = false;
+  if (user.auth_provider === 'email' || !user.auth_provider) {
+    try {
+      const passwordCheckQuery = `
+        SELECT password_hash IS NOT NULL as has_password
+        FROM users
+        WHERE id = $1
+      `;
+      const passwordResult = await pool.query(passwordCheckQuery, [userId]);
+      hasPassword = passwordResult.rows[0]?.has_password || false;
+    } catch (error) {
+      // If query fails, fall back to checking signup_status
+      // Active email-based users should have a password
+      hasPassword = user.signup_status === 'active';
+      console.warn(`[User Profile] Failed to check password for user ${userId}, using signup_status fallback:`, error.message);
+    }
+  }
+
+  // Add hasPassword to user object for completeness check
+  const userWithPassword = {
+    ...user,
+    password_hash: hasPassword ? 'exists' : null // Use 'exists' as placeholder, not actual hash
+  };
+
   // Check profile completeness (but don't throw error - return with flag)
-  const completeness = checkProfileCompleteness(user);
+  const completeness = checkProfileCompleteness(userWithPassword);
 
   // Fetch user's profile image to get avatar URL
   // Query directly for primary profile image that has been uploaded

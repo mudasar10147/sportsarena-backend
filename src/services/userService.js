@@ -9,6 +9,7 @@ const User = require('../models/User');
 const Image = require('../models/Image');
 const { generateAuthToken } = require('../utils/jwt');
 const imageService = require('./imageService');
+const emailVerificationService = require('./emailVerificationService');
 const { pool } = require('../config/database');
 
 /**
@@ -83,11 +84,58 @@ const signup = async (userData) => {
 };
 
 /**
+ * Register a new user and optionally send verification email
+ * @param {Object} userData - User registration data
+ * @param {string} userData.email - User email
+ * @param {string} userData.username - User username
+ * @param {string} userData.password - Plain text password
+ * @param {string} userData.firstName - User first name
+ * @param {string} userData.lastName - User last name
+ * @param {string} [userData.phone] - User phone number
+ * @param {string} [userData.role='player'] - User role
+ * @param {Object} [options] - Additional options
+ * @param {boolean} [options.sendVerificationEmail=false] - Whether to send verification email
+ * @param {string} [options.ipAddress] - IP address for rate limiting
+ * @param {string} [options.userAgent] - User agent for tracking
+ * @returns {Promise<Object>} Created user object (without password) and emailSent flag
+ * @throws {Error} If email or username already exists or validation fails
+ */
+const signupWithVerification = async (userData, options = {}) => {
+  const { sendVerificationEmail = false, ipAddress = null, userAgent = null } = options;
+
+  // Create user first (don't fail if email sending fails)
+  const user = await signup(userData);
+
+  // Optionally send verification email
+  let emailSent = false;
+  if (sendVerificationEmail) {
+    try {
+      await emailVerificationService.sendVerificationCode(
+        user.email,
+        user.first_name,
+        ipAddress,
+        userAgent
+      );
+      emailSent = true;
+    } catch (emailError) {
+      // Log error but don't fail signup
+      console.error(`[User Service] Failed to send verification email to ${user.email}:`, emailError.message);
+      // emailSent remains false
+    }
+  }
+
+  return {
+    user,
+    emailSent
+  };
+};
+
+/**
  * Login user and return JWT token
  * @param {string} email - User email
  * @param {string} password - Plain text password
  * @returns {Promise<Object>} Object with user and token
- * @throws {Error} If credentials are invalid
+ * @throws {Error} If credentials are invalid or email verification required
  */
 const login = async (email, password) => {
   // Find user with password
@@ -117,6 +165,18 @@ const login = async (email, password) => {
     throw error;
   }
 
+  // Check email verification status
+  const isVerificationRequired = process.env.IS_VERIFICATION_REQUIRED === 'true' || 
+                                  process.env.IS_VERIFICATION_REQUIRED === '1';
+  
+  if (isVerificationRequired && !user.email_verified) {
+    const error = new Error('Email verification required. Please verify your email address before logging in.');
+    error.statusCode = 403;
+    error.errorCode = 'EMAIL_VERIFICATION_REQUIRED';
+    error.emailVerified = false;
+    throw error;
+  }
+
   // Generate JWT token
   const token = generateAuthToken(user);
 
@@ -125,7 +185,9 @@ const login = async (email, password) => {
 
   return {
     user,
-    token
+    token,
+    emailVerified: user.email_verified || false,
+    emailVerificationRequired: !user.email_verified && isVerificationRequired
   };
 };
 
@@ -512,6 +574,175 @@ const loginOrCreateGoogleUser = async (googlePayload) => {
 };
 
 /**
+ * Complete signup by setting password and profile information
+ * Used after email verification to complete the signup process
+ * 
+ * @param {number} userId - User ID
+ * @param {Object} profileData - Profile data to update
+ * @param {string} [profileData.password] - Plain text password (optional)
+ * @param {string} [profileData.firstName] - User first name (optional)
+ * @param {string} [profileData.lastName] - User last name (optional)
+ * @param {string} [profileData.phone] - User phone number (optional)
+ * @returns {Promise<Object>} Updated user object
+ * @throws {Error} If user not found, password validation fails, or update fails
+ */
+const completeSignup = async (userId, profileData) => {
+  const { password, firstName, lastName, phone } = profileData;
+
+  // Get user to check current state
+  const user = await User.findById(userId);
+  
+  if (!user) {
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    error.errorCode = 'USER_NOT_FOUND';
+    throw error;
+  }
+
+  // Build update data
+  const updateData = {};
+
+  // Validate and hash password if provided
+  if (password) {
+    // Validate password strength
+    const { validatePasswordStrength } = require('../utils/passwordValidation');
+    const passwordValidation = validatePasswordStrength(password);
+    
+    if (!passwordValidation.valid) {
+      const error = new Error(`Password validation failed: ${passwordValidation.errors.join(', ')}`);
+      error.statusCode = 400;
+      error.errorCode = 'INVALID_PASSWORD';
+      error.errors = passwordValidation.errors;
+      throw error;
+    }
+
+    // Hash password
+    const passwordHash = await hashPassword(password);
+    updateData.passwordHash = passwordHash;
+    
+    // Set signup_status to 'active' when password is set
+    updateData.signupStatus = 'active';
+  }
+
+  // Add profile fields if provided
+  if (firstName !== undefined) {
+    // Validate first name
+    const trimmedFirstName = firstName ? firstName.trim() : null;
+    if (trimmedFirstName && trimmedFirstName.length > 0) {
+      if (trimmedFirstName.length < 2) {
+        const error = new Error('First name must be at least 2 characters long');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      if (trimmedFirstName.length > 50) {
+        const error = new Error('First name is too long. Maximum 50 characters allowed');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      // Name format validation (only letters, spaces, hyphens, apostrophes)
+      const nameRegex = /^[a-zA-Z\s'-]+$/;
+      if (!nameRegex.test(trimmedFirstName)) {
+        const error = new Error('First name can only contain letters, spaces, hyphens, and apostrophes');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      updateData.firstName = trimmedFirstName;
+    } else {
+      updateData.firstName = null;
+    }
+  }
+
+  if (lastName !== undefined) {
+    // Validate last name
+    const trimmedLastName = lastName ? lastName.trim() : null;
+    if (trimmedLastName && trimmedLastName.length > 0) {
+      if (trimmedLastName.length < 2) {
+        const error = new Error('Last name must be at least 2 characters long');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      if (trimmedLastName.length > 50) {
+        const error = new Error('Last name is too long. Maximum 50 characters allowed');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      // Name format validation (only letters, spaces, hyphens, apostrophes)
+      const nameRegex = /^[a-zA-Z\s'-]+$/;
+      if (!nameRegex.test(trimmedLastName)) {
+        const error = new Error('Last name can only contain letters, spaces, hyphens, and apostrophes');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      updateData.lastName = trimmedLastName;
+    } else {
+      updateData.lastName = null;
+    }
+  }
+
+  if (phone !== undefined) {
+    // Validate phone if provided
+    if (phone && phone.trim().length > 0) {
+      const normalizedPhone = phone.trim();
+      
+      // Basic phone validation (digits, spaces, hyphens, parentheses, plus sign)
+      const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+      if (!phoneRegex.test(normalizedPhone)) {
+        const error = new Error('Phone number contains invalid characters');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+
+      // Remove non-digit characters for length check
+      const digitsOnly = normalizedPhone.replace(/\D/g, '');
+      
+      // Phone length validation (between 10-15 digits)
+      if (digitsOnly.length < 10) {
+        const error = new Error('Phone number must contain at least 10 digits');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      if (digitsOnly.length > 15) {
+        const error = new Error('Phone number is too long. Maximum 15 digits allowed');
+        error.statusCode = 400;
+        error.errorCode = 'VALIDATION_ERROR';
+        throw error;
+      }
+      updateData.phone = normalizedPhone;
+    } else {
+      updateData.phone = null;
+    }
+  }
+
+  // Check if at least one field is being updated
+  if (Object.keys(updateData).length === 0) {
+    const error = new Error('At least one field (password, firstName, lastName, phone) must be provided');
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // Update user
+  const updatedUser = await User.update(userId, updateData);
+
+  if (!updatedUser) {
+    const error = new Error('Failed to update profile');
+    error.statusCode = 500;
+    error.errorCode = 'UPDATE_FAILED';
+    throw error;
+  }
+
+  return updatedUser;
+};
+
+/**
  * Delete user (soft delete by setting is_active to false)
  * Can delete by user ID or username
  * @param {number|string} identifier - User ID (number) or username (string)
@@ -568,10 +799,12 @@ const deleteUser = async (identifier, requestingUserId) => {
 
 module.exports = {
   signup,
+  signupWithVerification,
   login,
   loginOrCreateGoogleUser,
   getProfile,
   updateProfile,
+  completeSignup,
   changePassword,
   deleteUser,
   hashPassword,

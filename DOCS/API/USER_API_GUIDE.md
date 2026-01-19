@@ -468,6 +468,8 @@ GET /api/v1/users/bookings?page=1&limit=10&status=confirmed
         "name": "Ace Padel",
         "address": "123 Sports Street, Karachi",
         "city": "Karachi",
+        "latitude": 24.8607,
+        "longitude": 67.0011,
         "contactPhone": "+923001234567",
         "contactEmail": "info@acepadel.com"
       }
@@ -487,7 +489,7 @@ GET /api/v1/users/bookings?page=1&limit=10&status=confirmed
 **Note:** The response includes complete booking details with:
 - **Time Slot**: Start time, end time, and slot status
 - **Court**: Court name, description, price per hour, and indoor/outdoor status
-- **Facility**: Facility name, address, city, and contact information
+- **Facility**: Facility name, address, city, latitude, longitude, and contact information
 
 This allows users to see all relevant information about their bookings without making additional API calls.
 

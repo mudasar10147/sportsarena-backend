@@ -45,6 +45,34 @@ const errorHandler = (err, req, res, next) => {
     return sendError(res, 'Referenced resource does not exist', 'FOREIGN_KEY_VIOLATION', 400);
   }
 
+  if (err.code === '23514') { // PostgreSQL check constraint violation
+    return sendError(res, 'Invalid data provided', 'CHECK_CONSTRAINT_VIOLATION', 400);
+  }
+
+  if (err.code === '23502') { // PostgreSQL not null violation
+    return sendError(res, 'Required field is missing', 'NOT_NULL_VIOLATION', 400);
+  }
+
+  // Handle database connection errors
+  if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND') {
+    console.error('Database connection error:', err.message);
+    return sendError(res, 'Database connection error. Please try again later.', 'DATABASE_CONNECTION_ERROR', 503);
+  }
+
+  // Handle SES API errors
+  if (err.name === 'Throttling' || err.name === 'ServiceQuotaExceededException') {
+    return sendError(res, 'Email service is temporarily unavailable. Please try again later.', 'EMAIL_SERVICE_UNAVAILABLE', 503);
+  }
+
+  if (err.name === 'MessageRejected') {
+    return sendError(res, 'Unable to send email. Please check the email address.', 'EMAIL_REJECTED', 400);
+  }
+
+  if (err.name === 'MailFromDomainNotVerifiedException') {
+    console.error('SES configuration error:', err.message);
+    return sendError(res, 'Email service configuration error. Please contact support.', 'EMAIL_CONFIG_ERROR', 500);
+  }
+
   // Handle custom error objects
   if (err.statusCode && err.message) {
     return sendError(res, err.message, err.errorCode, err.statusCode);

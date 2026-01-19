@@ -34,11 +34,11 @@ CREATE TABLE IF NOT EXISTS court_availability_rules (
 );
 
 -- Create indexes for common queries
-CREATE INDEX idx_availability_rules_court_id ON court_availability_rules(court_id);
-CREATE INDEX idx_availability_rules_day ON court_availability_rules(day_of_week);
-CREATE INDEX idx_availability_rules_active ON court_availability_rules(is_active);
-CREATE INDEX idx_availability_rules_court_day ON court_availability_rules(court_id, day_of_week, is_active);
-CREATE INDEX idx_availability_rules_time_range ON court_availability_rules(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_availability_rules_court_id ON court_availability_rules (court_id);
+CREATE INDEX IF NOT EXISTS idx_availability_rules_day ON court_availability_rules(day_of_week);
+CREATE INDEX IF NOT EXISTS idx_availability_rules_active ON court_availability_rules(is_active);
+CREATE INDEX IF NOT EXISTS idx_availability_rules_court_day ON court_availability_rules(court_id, day_of_week, is_active);
+CREATE INDEX IF NOT EXISTS idx_availability_rules_time_range ON court_availability_rules(start_time, end_time);
 
 -- Add comments
 COMMENT ON TABLE court_availability_rules IS 

@@ -49,8 +49,52 @@ const apiRateLimiter = rateLimit({
   legacyHeaders: false
 });
 
+/**
+ * Email verification rate limiter
+ * Limits verification code requests per IP
+ * 
+ * Limits: 10 requests per hour per IP
+ * Additional per-email rate limiting is handled in the service layer
+ */
+const emailVerificationRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 requests per hour per IP
+  message: {
+    success: false,
+    message: 'Too many verification requests. Please try again later.',
+    error_code: 'RATE_LIMIT_EXCEEDED'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skipFailedRequests: false
+});
+
+/**
+ * Email verification code verification rate limiter
+ * Limits verification attempts per IP
+ * 
+ * Limits: 20 attempts per hour per IP
+ * Additional per-code attempt limiting is handled in the service layer
+ */
+const emailVerificationAttemptRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // 20 verification attempts per hour per IP
+  message: {
+    success: false,
+    message: 'Too many verification attempts. Please try again later.',
+    error_code: 'RATE_LIMIT_EXCEEDED'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skipFailedRequests: false
+});
+
 module.exports = {
   authRateLimiter,
-  apiRateLimiter
+  apiRateLimiter,
+  emailVerificationRateLimiter,
+  emailVerificationAttemptRateLimiter
 };
 

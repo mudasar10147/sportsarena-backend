@@ -9,7 +9,7 @@ class User {
   static _getUserFields(includePassword = false) {
     const baseFields = [
       'id', 'email', 'username', 'first_name', 'last_name', 'phone', 'role',
-      'is_active', 'email_verified', 'auth_provider', 'provider_id', 'avatar',
+      'is_active', 'email_verified', 'signup_status', 'auth_provider', 'provider_id', 'avatar',
       'created_at', 'updated_at'
     ];
     
@@ -149,7 +149,7 @@ class User {
    * @returns {Promise<Object|null>} Updated user object or null if not found
    */
   static async update(userId, updateData) {
-    const allowedFields = ['first_name', 'last_name', 'phone', 'is_active', 'email_verified', 'avatar', 'password_hash'];
+    const allowedFields = ['first_name', 'last_name', 'phone', 'is_active', 'email_verified', 'signup_status', 'avatar', 'password_hash'];
     const updates = [];
     const values = [];
     let paramCount = 1;
@@ -159,6 +159,7 @@ class User {
                      key === 'lastName' ? 'last_name' :
                      key === 'isActive' ? 'is_active' :
                      key === 'emailVerified' ? 'email_verified' :
+                     key === 'signupStatus' ? 'signup_status' :
                      key === 'passwordHash' ? 'password_hash' :
                      key === 'avatar' ? 'avatar' : key;
 
@@ -278,6 +279,56 @@ class User {
     const query = 'SELECT 1 FROM users WHERE username = $1 LIMIT 1';
     const result = await pool.query(query, [username]);
     return result.rows.length > 0;
+  }
+
+  /**
+   * Get account status for email
+   * Returns account information including signup_status, email_verified, and password status
+   * @param {string} email - Email to check
+   * @returns {Promise<Object|null>} Account status object or null if email doesn't exist
+   */
+  static async getAccountStatus(email) {
+    const query = `
+      SELECT 
+        id,
+        email,
+        username,
+        email_verified,
+        signup_status,
+        password_hash IS NOT NULL as has_password,
+        is_active
+      FROM users
+      WHERE email = $1
+      LIMIT 1
+    `;
+    const result = await pool.query(query, [email]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    
+    // Determine account state
+    let accountState = 'not_found';
+    if (row.email_verified && row.has_password && row.signup_status === 'active') {
+      accountState = 'complete';
+    } else if (row.email_verified && !row.has_password) {
+      accountState = 'incomplete';
+    } else if (!row.email_verified) {
+      accountState = 'unverified';
+    }
+
+    return {
+      id: row.id,
+      email: row.email,
+      username: row.username,
+      emailVerified: row.email_verified,
+      signupStatus: row.signup_status,
+      hasPassword: row.has_password,
+      isActive: row.is_active,
+      accountState
+    };
   }
 
   /**

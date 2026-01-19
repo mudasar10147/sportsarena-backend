@@ -35,7 +35,10 @@ const migrationFiles = [
   '022_add_pending_expiration_to_policies.sql',
   '025_make_time_slot_id_nullable.sql',
   '023_remove_time_slot_id_from_bookings.sql',
-  '024_add_payment_proof_to_bookings.sql'
+  '024_add_payment_proof_to_bookings.sql',
+  '026_create_email_verification_codes_table.sql',
+  '027_add_signup_status_to_users.sql',
+  '028_add_username_to_email_verification_codes.sql'
 ];
 
 async function runMigrations() {

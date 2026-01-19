@@ -6,214 +6,90 @@
 
 const userService = require('../services/userService');
 const bookingService = require('../services/bookingService');
+const emailVerificationService = require('../services/emailVerificationService');
+const signupService = require('../services/signupService');
 const Booking = require('../models/Booking');
+const User = require('../models/User');
+const { sanitizeAndValidateEmail, sanitizeAndValidateCode } = require('../utils/validation');
 const { 
   sendSuccess, 
   sendCreated, 
   sendError, 
-  sendValidationError 
+  sendValidationError,
+  sendUnauthorized,
+  sendNotFound
 } = require('../utils/response');
 const { parsePagination, sendPaginatedResponse } = require('../utils/pagination');
 
 /**
- * Register a new user
+ * Initial signup request (username + email only)
  * POST /api/v1/users/signup
+ * 
+ * Step 1 of signup process:
+ * - Validates username and email
+ * - Checks uniqueness
+ * - Handles existing account states
+ * - Sends verification code
  */
 const signup = async (req, res, next) => {
   try {
-    const { email, username, password, firstName, lastName, phone, role } = req.body;
+    const { email, username } = req.body;
 
     // ===== Required Fields Validation =====
-    if (!email || !username || !password || !firstName || !lastName) {
-      return sendValidationError(res, 'Missing required fields: email, username, password, firstName, lastName');
+    if (!email || !username) {
+      return sendValidationError(res, 'Email and username are required');
     }
 
-    // ===== Email Validation =====
-    // Trim and normalize email
-    const normalizedEmail = email.trim().toLowerCase();
-    
-    // Check email is not empty after trimming
-    if (!normalizedEmail) {
-      return sendValidationError(res, 'Email cannot be empty');
-    }
+    // Get IP address and user agent for rate limiting
+    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0] || null;
+    const userAgent = req.headers['user-agent'] || null;
 
-    // Email format validation (more robust)
-    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-    if (!emailRegex.test(normalizedEmail)) {
-      return sendValidationError(res, 'Invalid email format. Please provide a valid email address');
-    }
+    // Check signup eligibility and send verification code
+    const result = await signupService.checkSignupAndSendCode(
+      username,
+      email,
+      ipAddress,
+      userAgent
+    );
 
-    // Email length validation (max 255 characters as per database)
-    if (normalizedEmail.length > 255) {
-      return sendValidationError(res, 'Email is too long. Maximum 255 characters allowed');
-    }
-
-    // ===== Username Validation =====
-    // Trim username
-    const normalizedUsername = username.trim();
-    
-    // Check username is not empty after trimming
-    if (!normalizedUsername) {
-      return sendValidationError(res, 'Username cannot be empty');
-    }
-
-    // Username length validation (minimum 3, maximum 50 characters)
-    if (normalizedUsername.length < 3) {
-      return sendValidationError(res, 'Username must be at least 3 characters long');
-    }
-    if (normalizedUsername.length > 50) {
-      return sendValidationError(res, 'Username is too long. Maximum 50 characters allowed');
-    }
-
-    // Username format validation (alphanumeric, underscores, hyphens only)
-    const usernameRegex = /^[a-zA-Z0-9_-]+$/;
-    if (!usernameRegex.test(normalizedUsername)) {
-      return sendValidationError(res, 'Username can only contain letters, numbers, underscores, and hyphens');
-    }
-
-    // Username cannot start or end with underscore or hyphen
-    if (/^[_-]|[_-]$/.test(normalizedUsername)) {
-      return sendValidationError(res, 'Username cannot start or end with underscore or hyphen');
-    }
-
-    // Username cannot be all numbers
-    if (/^\d+$/.test(normalizedUsername)) {
-      return sendValidationError(res, 'Username cannot be all numbers');
-    }
-
-    // ===== Password Validation =====
-    // Check password is not empty
-    if (!password || password.trim().length === 0) {
-      return sendValidationError(res, 'Password cannot be empty');
-    }
-
-    // Password length validation (minimum 8 characters, maximum 128)
-    if (password.length < 8) {
-      return sendValidationError(res, 'Password must be at least 8 characters long');
-    }
-    if (password.length > 128) {
-      return sendValidationError(res, 'Password is too long. Maximum 128 characters allowed');
-    }
-
-    // Password strength validation
-    const passwordErrors = [];
-    
-    // Check for at least one uppercase letter
-    if (!/[A-Z]/.test(password)) {
-      passwordErrors.push('one uppercase letter');
-    }
-    
-    // Check for at least one lowercase letter
-    if (!/[a-z]/.test(password)) {
-      passwordErrors.push('one lowercase letter');
-    }
-    
-    // Check for at least one numerical digit
-    if (!/[0-9]/.test(password)) {
-      passwordErrors.push('one numerical digit');
-    }
-    
-    // Check for at least one special character
-    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
-      passwordErrors.push('one special character (!@#$%^&*()_+-=[]{}|;:,.<>?)');
-    }
-
-    // Check for no whitespace
-    if (/\s/.test(password)) {
-      passwordErrors.push('no spaces');
-    }
-
-    if (passwordErrors.length > 0) {
-      return sendValidationError(
-        res,
-        `Password must contain: ${passwordErrors.join(', ')}`
-      );
-    }
-
-    // ===== Name Validation =====
-    // Trim names
-    const trimmedFirstName = firstName.trim();
-    const trimmedLastName = lastName.trim();
-
-    // Check first name is not empty after trimming
-    if (!trimmedFirstName) {
-      return sendValidationError(res, 'First name cannot be empty');
-    }
-
-    // Check last name is not empty after trimming
-    if (!trimmedLastName) {
-      return sendValidationError(res, 'Last name cannot be empty');
-    }
-
-    // Name length validation (reasonable limits)
-    if (trimmedFirstName.length < 2) {
-      return sendValidationError(res, 'First name must be at least 2 characters long');
-    }
-    if (trimmedFirstName.length > 50) {
-      return sendValidationError(res, 'First name is too long. Maximum 50 characters allowed');
-    }
-
-    if (trimmedLastName.length < 2) {
-      return sendValidationError(res, 'Last name must be at least 2 characters long');
-    }
-    if (trimmedLastName.length > 50) {
-      return sendValidationError(res, 'Last name is too long. Maximum 50 characters allowed');
-    }
-
-    // Name format validation (only letters, spaces, hyphens, apostrophes)
-    const nameRegex = /^[a-zA-Z\s'-]+$/;
-    if (!nameRegex.test(trimmedFirstName)) {
-      return sendValidationError(res, 'First name can only contain letters, spaces, hyphens, and apostrophes');
-    }
-    if (!nameRegex.test(trimmedLastName)) {
-      return sendValidationError(res, 'Last name can only contain letters, spaces, hyphens, and apostrophes');
-    }
-
-    // ===== Phone Validation (if provided) =====
-    let normalizedPhone = null;
-    if (phone) {
-      // Trim phone
-      normalizedPhone = phone.trim();
-      
-      // Basic phone validation (digits, spaces, hyphens, parentheses, plus sign)
-      const phoneRegex = /^[\d\s\-\+\(\)]+$/;
-      if (!phoneRegex.test(normalizedPhone)) {
-        return sendValidationError(res, 'Phone number contains invalid characters');
-      }
-
-      // Remove non-digit characters for length check
-      const digitsOnly = normalizedPhone.replace(/\D/g, '');
-      
-      // Phone length validation (between 10-15 digits)
-      if (digitsOnly.length < 10) {
-        return sendValidationError(res, 'Phone number must contain at least 10 digits');
-      }
-      if (digitsOnly.length > 15) {
-        return sendValidationError(res, 'Phone number is too long. Maximum 15 digits allowed');
-      }
-    }
-
-    // ===== Role Validation =====
-    // Note: platform_admin cannot be created via signup - use createPlatformAdmin script
-    if (role && !['player', 'facility_admin'].includes(role)) {
-      return sendValidationError(res, 'Invalid role. Must be "player" or "facility_admin". Platform admin accounts must be created using the admin script.');
-    }
-
-    // ===== All Validations Passed - Create User =====
-    const user = await userService.signup({
-      email: normalizedEmail,
-      username: normalizedUsername,
-      password,
-      firstName: trimmedFirstName,
-      lastName: trimmedLastName,
-      phone: normalizedPhone,
-      role: role || 'player'
-    });
-
-    return sendCreated(res, {
-      user,
-    }, 'User registered successfully');
+    // Prepare response
+    return sendSuccess(res, {
+      email: result.email,
+      username: result.username,
+      expiresAt: result.expiresAt,
+      accountState: result.accountState
+    }, result.message);
   } catch (error) {
+    // Handle specific error codes
+    if (error.errorCode === 'USERNAME_EXISTS') {
+      return sendError(res, error.message, error.errorCode, 409);
+    }
+
+    if (error.errorCode === 'EMAIL_EXISTS_COMPLETE') {
+      return sendError(res, error.message, error.errorCode, 409);
+    }
+
+    if (error.errorCode === 'INVALID_USERNAME' || error.errorCode === 'INVALID_EMAIL') {
+      return sendValidationError(res, error.message);
+    }
+
+    if (error.errorCode === 'EMAIL_RATE_LIMIT' || error.errorCode === 'IP_RATE_LIMIT') {
+      return sendError(res, error.message, error.errorCode, 429);
+    }
+
+    if (error.errorCode === 'RESEND_COOLDOWN') {
+      return sendError(res, error.message, error.errorCode, 429);
+    }
+
+    if (error.errorCode === 'DATABASE_ERROR') {
+      return sendError(res, 'Unable to process request. Please try again later.', error.errorCode, 500);
+      }
+
+    if (error.errorCode === 'EMAIL_SEND_FAILED') {
+      return sendError(res, error.message, error.errorCode, 400);
+    }
+
+    // Pass other errors to error handler
     next(error);
   }
 };
@@ -232,13 +108,28 @@ const login = async (req, res, next) => {
     }
 
     // Login
-    const { user, token } = await userService.login(email, password);
+    const loginResult = await userService.login(email, password);
 
-    return sendSuccess(res, {
-      user,
-      token
-    }, 'Login successful');
+    // Prepare response
+    const responseData = {
+      user: loginResult.user,
+      token: loginResult.token,
+      emailVerified: loginResult.emailVerified,
+      emailVerificationRequired: loginResult.emailVerificationRequired || false
+    };
+
+    // Prepare message
+    let message = 'Login successful';
+    if (!loginResult.emailVerified && !loginResult.emailVerificationRequired) {
+      message = 'Login successful. Please verify your email address.';
+    }
+
+    return sendSuccess(res, responseData, message);
   } catch (error) {
+    // Handle email verification required error
+    if (error.errorCode === 'EMAIL_VERIFICATION_REQUIRED') {
+      return sendError(res, error.message, error.errorCode, 403);
+    }
     next(error);
   }
 };
@@ -285,6 +176,64 @@ const updateProfile = async (req, res, next) => {
 
     return sendSuccess(res, user, 'Profile updated successfully');
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Complete signup by setting password and profile information
+ * POST /api/v1/users/complete-signup
+ * Requires authentication
+ * 
+ * Used after email verification to complete the signup process.
+ * Allows users to set password and complete their profile.
+ */
+const completeSignup = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const { password, firstName, lastName, phone } = req.body;
+
+    // Validation - at least one field must be provided
+    if (!password && !firstName && !lastName && phone === undefined) {
+      return sendValidationError(res, 'At least one field (password, firstName, lastName, phone) must be provided');
+    }
+
+    // Complete signup
+    const user = await userService.completeSignup(userId, {
+      password,
+      firstName,
+      lastName,
+      phone
+    });
+
+    // Prepare message based on what was updated
+    let message = 'Profile updated successfully';
+    if (password) {
+      message = 'Signup completed successfully. Your account is now active.';
+    } else {
+      message = 'Profile updated successfully';
+    }
+
+    return sendSuccess(res, user, message);
+  } catch (error) {
+    // Handle specific error codes
+    if (error.errorCode === 'INVALID_PASSWORD') {
+      return sendValidationError(res, error.message, error.errors);
+    }
+
+    if (error.errorCode === 'VALIDATION_ERROR') {
+      return sendValidationError(res, error.message);
+    }
+
+    if (error.errorCode === 'USER_NOT_FOUND') {
+      return sendNotFound(res, error.message);
+    }
+
+    if (error.errorCode === 'UPDATE_FAILED') {
+      return sendError(res, error.message, error.errorCode, 500);
+    }
+
+    // Pass other errors to error handler
     next(error);
   }
 };
@@ -364,13 +313,208 @@ const deleteUser = async (req, res, next) => {
   }
 };
 
+/**
+ * Send verification code to email
+ * POST /api/v1/users/send-verification-code
+ * Can be called without authentication (for signup) or with authentication (for re-verification)
+ */
+const sendVerificationCode = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    // Validation
+    if (!email) {
+      return sendValidationError(res, 'Email is required');
+    }
+
+    // Validate and sanitize email
+    const emailValidation = sanitizeAndValidateEmail(email);
+    if (!emailValidation.valid) {
+      return sendValidationError(res, emailValidation.error);
+    }
+    const normalizedEmail = emailValidation.email;
+
+    // Get IP address and user agent from request
+    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0] || null;
+    const userAgent = req.headers['user-agent'] || null;
+
+    // Get user's first name if authenticated (for personalization)
+    let firstName = null;
+    if (req.userId) {
+      try {
+        const user = await User.findById(req.userId);
+        if (user && user.email === normalizedEmail) {
+          firstName = user.first_name;
+        }
+      } catch (error) {
+        // User might not exist, that's okay
+      }
+    }
+
+    // Send verification code
+    const result = await emailVerificationService.sendVerificationCode(
+      normalizedEmail,
+      firstName,
+      ipAddress,
+      userAgent
+    );
+
+    return sendSuccess(res, {
+      email: result.email,
+      expiresAt: result.expiresAt
+    }, result.message || 'Verification code sent successfully');
+  } catch (error) {
+    // Handle specific error codes
+    if (error.errorCode === 'EMAIL_RATE_LIMIT' || error.errorCode === 'IP_RATE_LIMIT') {
+      return sendError(res, error.message, error.errorCode, 429);
+    }
+
+    if (error.errorCode === 'RESEND_COOLDOWN') {
+      return sendError(res, error.message, error.errorCode, 429);
+    }
+
+    if (error.errorCode === 'INVALID_EMAIL') {
+      return sendValidationError(res, error.message);
+    }
+
+    if (error.errorCode === 'DATABASE_ERROR') {
+      return sendError(res, 'Unable to process request. Please try again later.', 'DATABASE_ERROR', 500);
+    }
+
+    if (error.errorCode === 'EMAIL_SEND_FAILED') {
+      return sendError(res, error.message, error.errorCode, 400);
+    }
+
+    // Pass other errors to error handler
+    next(error);
+  }
+};
+
+/**
+ * Verify email with code
+ * POST /api/v1/users/verify-email
+ * No authentication required (code-based verification)
+ */
+const verifyEmail = async (req, res, next) => {
+  try {
+    const { email, code } = req.body;
+
+    // Validation
+    if (!email || !code) {
+      return sendValidationError(res, 'Email and code are required');
+    }
+
+    // Validate and sanitize email
+    const emailValidation = sanitizeAndValidateEmail(email);
+    if (!emailValidation.valid) {
+      return sendValidationError(res, emailValidation.error);
+    }
+    const normalizedEmail = emailValidation.email;
+
+    // Validate and sanitize code
+    const codeValidation = sanitizeAndValidateCode(code);
+    if (!codeValidation.valid) {
+      return sendValidationError(res, codeValidation.error);
+    }
+
+    // Get IP address from request
+    const ipAddress = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for']?.split(',')[0] || null;
+
+    // Verify code
+    const result = await emailVerificationService.verifyCode(normalizedEmail, codeValidation.code, ipAddress);
+
+    // Return token and user data
+    return sendSuccess(res, {
+      token: result.token,
+      user: result.user,
+      email: result.email,
+      verified: result.verified
+    }, result.message || 'Email verified and account created successfully');
+  } catch (error) {
+    // Handle specific error codes with security-conscious messages
+    if (error.errorCode === 'CODE_NOT_FOUND') {
+      // Generic message - don't reveal if email exists
+      return sendError(res, 'Invalid or expired verification code. Please request a new code.', error.errorCode, 400);
+    }
+
+    if (error.errorCode === 'INVALID_CODE') {
+      // Generic message - don't reveal specific reason
+      return sendError(res, error.message, error.errorCode, 400);
+    }
+
+    if (error.errorCode === 'MAX_ATTEMPTS_EXCEEDED') {
+      return sendError(res, error.message, error.errorCode, 400);
+    }
+
+    if (error.errorCode === 'INVALID_CODE_FORMAT' || error.errorCode === 'INVALID_EMAIL') {
+      return sendValidationError(res, error.message);
+    }
+
+    if (error.errorCode === 'MISSING_PARAMETERS') {
+      return sendValidationError(res, error.message);
+    }
+
+    if (error.errorCode === 'DATABASE_ERROR' || error.errorCode === 'TRANSACTION_ERROR') {
+      return sendError(res, 'Unable to process verification. Please try again later.', error.errorCode, 500);
+    }
+
+    if (error.errorCode === 'VERIFICATION_ERROR') {
+      return sendError(res, 'Unable to verify code. Please try again.', error.errorCode, 500);
+    }
+
+    if (error.errorCode === 'ACCOUNT_EXISTS') {
+      return sendError(res, error.message, error.errorCode, 409);
+    }
+
+    if (error.errorCode === 'USERNAME_REQUIRED') {
+      return sendError(res, error.message, error.errorCode, 400);
+    }
+
+    // Pass other errors to error handler
+    next(error);
+  }
+};
+
+/**
+ * Get email verification status
+ * GET /api/v1/users/verification-status
+ * Requires authentication
+ */
+const getVerificationStatus = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      return sendUnauthorized(res, 'Authentication required');
+    }
+
+    // Get user profile
+    const user = await userService.getProfile(userId);
+
+    if (!user) {
+      return sendNotFound(res, 'User not found');
+    }
+
+    return sendSuccess(res, {
+      email: user.email,
+      emailVerified: user.email_verified || false
+    }, 'Verification status retrieved successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   signup,
   login,
   getProfile,
   updateProfile,
+  completeSignup,
   changePassword,
   getUserBookings,
-  deleteUser
+  deleteUser,
+  sendVerificationCode,
+  verifyEmail,
+  getVerificationStatus
 };
 

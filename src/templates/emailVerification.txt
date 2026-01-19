@@ -1,0 +1,25 @@
+{{BRAND_NAME}} - Email Verification
+=====================================
+
+{{GREETING}}
+
+Please use the following verification code to verify your email address:
+
+{{VERIFICATION_CODE}}
+
+This code will expire in {{EXPIRATION_MINUTES}} minutes.
+
+SECURITY NOTICE:
+If you didn't request this verification code, please ignore this email. 
+Never share this code with anyone.
+
+---
+This is an automated email from {{BRAND_NAME}}.
+Please do not reply to this email.
+
+Need Help?
+If you have any questions, please contact our support team:
+{{SUPPORT_EMAIL}}
+
+© {{CURRENT_YEAR}} {{BRAND_NAME}}. All rights reserved.
+

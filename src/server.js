@@ -65,17 +65,40 @@ app.use(errorHandler); // Handle all errors
 app.listen(PORT, () => {
   console.log(`🚀 SportsArena backend server running on port ${PORT}`);
   console.log(`📍 Health check: http://localhost:${PORT}/health`);
+  
+  // Start email verification cleanup job
+  // This runs both in production (via start.js) and development (via server.js directly)
+  const { startCleanupJob, runStartupCleanup } = require('./services/emailVerificationCleanupJob');
+  
+  // Run cleanup on startup (if enabled)
+  runStartupCleanup().catch(error => {
+    console.error('[Server] Failed to run initial cleanup:', error.message);
+    // Don't fail server if cleanup fails
+  });
+  
+  // Start scheduled cleanup job
+  startCleanupJob();
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
+  
+  // Stop cleanup job
+  const { stopCleanupJob } = require('./services/emailVerificationCleanupJob');
+  stopCleanupJob();
+  
   await pool.end();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT signal received: closing HTTP server');
+  
+  // Stop cleanup job
+  const { stopCleanupJob } = require('./services/emailVerificationCleanupJob');
+  stopCleanupJob();
+  
   await pool.end();
   process.exit(0);
 });

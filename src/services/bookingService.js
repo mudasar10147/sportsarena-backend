@@ -498,7 +498,8 @@ const getUserBookings = async (userId, options = {}) => {
       c.id as court_id, c.name as court_name, c.description as court_description,
       c.price_per_hour, c.is_indoor,
       f.id as facility_id, f.name as facility_name, f.address as facility_address,
-      f.city as facility_city, f.contact_phone as facility_phone, f.contact_email as facility_email
+      f.city as facility_city, f.latitude as facility_latitude, f.longitude as facility_longitude,
+      f.contact_phone as facility_phone, f.contact_email as facility_email
     FROM bookings b
     INNER JOIN courts c ON b.court_id = c.id
     INNER JOIN facilities f ON c.facility_id = f.id
@@ -548,6 +549,8 @@ const getUserBookings = async (userId, options = {}) => {
       name: row.facility_name,
       address: row.facility_address,
       city: row.facility_city,
+      latitude: row.facility_latitude ? parseFloat(row.facility_latitude) : null,
+      longitude: row.facility_longitude ? parseFloat(row.facility_longitude) : null,
       contactPhone: row.facility_phone,
       contactEmail: row.facility_email
     }

@@ -10,6 +10,7 @@ Complete API endpoint documentation for the SportsArena backend.
 ## Resource-Specific Guides
 
 - **USER_API_GUIDE.md** - User management endpoints
+- **EMAIL_VERIFICATION_SIGNUP_API_GUIDE.md** - Email verification and progressive signup endpoints
 - **FACILITY_API_GUIDE.md** - Facility management endpoints
 - **COURT_API_GUIDE.md** - Court management endpoints
 - **SPORT_API_GUIDE.md** - Sport management endpoints

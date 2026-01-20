@@ -439,17 +439,40 @@ class User {
 
   /**
    * Delete user (hard delete - permanent deletion for testing)
-   * WARNING: This permanently removes the user record from the database
+   * WARNING: This permanently removes the user record and all related data from the database
+   * Deletes: bookings, images (created by user), then user record
    * @param {number} userId - User ID
    * @returns {Promise<boolean>} True if deleted successfully
    */
   static async delete(userId) {
-    const query = `
-      DELETE FROM users
-      WHERE id = $1
-    `;
-    const result = await pool.query(query, [userId]);
-    return result.rowCount > 0;
+    const client = await pool.connect();
+    
+    try {
+      await client.query('BEGIN');
+      
+      // Delete user's bookings first (foreign key constraint)
+      await client.query('DELETE FROM bookings WHERE user_id = $1', [userId]);
+      
+      // Delete images created by user (foreign key constraint)
+      await client.query('DELETE FROM images WHERE created_by = $1', [userId]);
+      
+      // Delete email verification codes for user's email
+      const userResult = await client.query('SELECT email FROM users WHERE id = $1', [userId]);
+      if (userResult.rows.length > 0) {
+        await client.query('DELETE FROM email_verification_codes WHERE email = $1', [userResult.rows[0].email]);
+      }
+      
+      // Now delete the user
+      const result = await client.query('DELETE FROM users WHERE id = $1', [userId]);
+      
+      await client.query('COMMIT');
+      return result.rowCount > 0;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

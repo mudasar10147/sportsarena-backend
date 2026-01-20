@@ -287,3 +287,171 @@ The `Facility` model has different structure than `ExploreFacility`:
 
 **Last Updated**: 2025-01-15
 
+---
+
+# Delete User Account Guide
+
+## Overview
+This guide explains how to delete a user account from the frontend. The delete operation **permanently removes** the user from the database.
+
+## API Endpoint
+
+```
+DELETE /api/v1/users/:identifier
+```
+
+| Field | Description |
+|-------|-------------|
+| **Method** | `DELETE` |
+| **URL** | `/api/v1/users/:identifier` |
+| **Auth Required** | Yes (JWT Token) |
+| **Identifier** | User ID (number) OR Username (string) |
+
+## Request
+
+### Headers
+```
+Authorization: Bearer <jwt-token>
+Content-Type: application/json
+```
+
+### URL Examples
+```
+DELETE /api/v1/users/123          // Delete by user ID
+DELETE /api/v1/users/johndoe      // Delete by username
+```
+
+## Response
+
+### Success Response (200 OK)
+```json
+{
+  "success": true,
+  "message": "User account deleted successfully",
+  "data": {
+    "id": 123,
+    "email": "john@example.com",
+    "username": "johndoe",
+    "first_name": "John",
+    "last_name": "Doe",
+    "role": "player",
+    "is_active": false
+  }
+}
+```
+
+### Error Responses
+
+**401 Unauthorized - Missing/Invalid Token**
+```json
+{
+  "success": false,
+  "message": "Authentication required",
+  "error_code": "UNAUTHORIZED"
+}
+```
+
+**403 Forbidden - Not Own Account**
+```json
+{
+  "success": false,
+  "message": "You can only delete your own account",
+  "error_code": "FORBIDDEN"
+}
+```
+
+**404 Not Found - User Not Found**
+```json
+{
+  "success": false,
+  "message": "User not found",
+  "error_code": "USER_NOT_FOUND"
+}
+```
+
+## Frontend Implementation Examples
+
+### Flutter/Dart
+```dart
+Future<void> deleteAccount() async {
+  final token = await getAuthToken();
+  final userId = currentUser.id; // or username
+  
+  final response = await http.delete(
+    Uri.parse('$baseUrl/api/v1/users/$userId'),
+    headers: {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    },
+  );
+  
+  if (response.statusCode == 200) {
+    // Success - clear local auth state and navigate to login
+    await clearAuthToken();
+    Navigator.pushReplacementNamed(context, '/login');
+  } else {
+    // Handle error
+    final error = jsonDecode(response.body);
+    showError(error['message']);
+  }
+}
+```
+
+### JavaScript/React
+```javascript
+const deleteAccount = async () => {
+  const token = localStorage.getItem('authToken');
+  const userId = currentUser.id; // or username
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v1/users/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (response.ok) {
+      // Success - clear auth and redirect to login
+      localStorage.removeItem('authToken');
+      navigate('/login');
+    } else {
+      const error = await response.json();
+      alert(error.message);
+    }
+  } catch (error) {
+    console.error('Delete failed:', error);
+  }
+};
+```
+
+### cURL (Testing)
+```bash
+curl -X DELETE http://localhost:3000/api/v1/users/123 \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+## Important Notes
+
+1. **Authentication Required**: User must be logged in with a valid JWT token
+2. **Self-Delete Only**: Users can only delete their own account (not others)
+3. **Permanent Deletion**: Account is **permanently deleted** from database (hard delete)
+4. **Re-signup Allowed**: After deletion, user can signup again with the same email/username
+5. **Clear Local State**: After successful deletion, clear the JWT token and any cached user data on frontend
+6. **Confirmation Dialog**: Always show a confirmation dialog before deleting (this is irreversible!)
+
+## Recommended UX Flow
+
+1. User clicks "Delete Account" button in settings
+2. Show confirmation dialog: "Are you sure you want to delete your account? This action cannot be undone."
+3. Optionally require password re-entry for security
+4. Call DELETE API
+5. On success: Clear auth tokens, show success message, redirect to login/home
+6. On error: Show error message, keep user on settings page
+
+---
+
+**Last Updated**: 2025-01-20
+

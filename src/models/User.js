@@ -438,14 +438,14 @@ class User {
   }
 
   /**
-   * Delete user (soft delete by setting is_active to false)
+   * Delete user (hard delete - permanent deletion for testing)
+   * WARNING: This permanently removes the user record from the database
    * @param {number} userId - User ID
    * @returns {Promise<boolean>} True if deleted successfully
    */
   static async delete(userId) {
     const query = `
-      UPDATE users
-      SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+      DELETE FROM users
       WHERE id = $1
     `;
     const result = await pool.query(query, [userId]);

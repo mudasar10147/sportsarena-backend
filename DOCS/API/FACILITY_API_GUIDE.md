@@ -92,25 +92,31 @@ GET /api/v1/facilities?latitude=24.8607&longitude=67.0011&radiusKm=5
       "id": 1,
       "name": "Elite Sports Center",
       "description": "Premium sports facility with multiple courts",
-      "address": "123 Sports Street, Karachi",
-      "city": "Karachi",
-      "latitude": 24.8607,
-      "longitude": 67.0011,
+      "address": "123 Sports Street, Lahore",
+      "city": "Lahore",
+      "latitude": 31.5204,
+      "longitude": 74.3587,
       "contactPhone": "+923001234567",
       "contactEmail": "info@elitesports.com",
       "ownerId": 5,
-      "photos": [
-        "https://example.com/photo1.jpg",
-        "https://example.com/photo2.jpg"
-      ],
+      "amenities": ["parking", "wifi", "restroom", "lighting"],
       "openingHours": {
         "monday": { "open": "09:00", "close": "22:00" },
         "tuesday": { "open": "09:00", "close": "22:00" },
         "sunday": null
       },
+      "coverImage": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "url": "https://cdn.example.com/facilities/1/cover.jpg",
+        "variants": {
+          "thumb": "https://cdn.example.com/facilities/1/thumb/cover.jpg",
+          "medium": "https://cdn.example.com/facilities/1/medium/cover.jpg",
+          "full": "https://cdn.example.com/facilities/1/full/cover.jpg"
+        }
+      },
       "isActive": true,
-      "createdAt": "2025-01-15T10:30:00.000Z",
-      "updatedAt": "2025-01-15T10:30:00.000Z",
+      "createdAt": "2025-01-20T10:30:00.000Z",
+      "updatedAt": "2025-01-20T10:30:00.000Z",
       "distanceKm": 2.5
     }
   ],
@@ -125,7 +131,10 @@ GET /api/v1/facilities?latitude=24.8607&longitude=67.0011&radiusKm=5
 }
 ```
 
-**Note:** `distanceKm` is only included when using location-based search.
+**Notes:**
+- `distanceKm` is only included when using location-based search
+- `coverImage` is included for each facility (null if no cover image uploaded)
+- List endpoints include cover image only; use Get Details for full gallery
 
 ---
 
@@ -173,24 +182,30 @@ GET /api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=1&limit=7
       "id": 1,
       "name": "Elite Sports Center",
       "description": "Premium sports facility with multiple courts",
-      "address": "123 Sports Street, Karachi",
-      "city": "Karachi",
-      "latitude": 24.8607,
-      "longitude": 67.0011,
+      "address": "123 Sports Street, Lahore",
+      "city": "Lahore",
+      "latitude": 31.5204,
+      "longitude": 74.3587,
       "contactPhone": "+923001234567",
       "contactEmail": "info@elitesports.com",
       "ownerId": 5,
-      "photos": [
-        "https://example.com/photo1.jpg",
-        "https://example.com/photo2.jpg"
-      ],
+      "amenities": ["parking", "wifi", "restroom", "lighting"],
       "openingHours": {
-        "monday": { "open": "09:00", "close": "22:00" },
-        "tuesday": { "open": "09:00", "close": "22:00" }
+        "monday": { "open": "06:00", "close": "23:00" },
+        "tuesday": { "open": "06:00", "close": "23:00" }
+      },
+      "coverImage": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "url": "https://cdn.example.com/facilities/1/cover.jpg",
+        "variants": {
+          "thumb": "https://cdn.example.com/facilities/1/thumb/cover.jpg",
+          "medium": "https://cdn.example.com/facilities/1/medium/cover.jpg",
+          "full": "https://cdn.example.com/facilities/1/full/cover.jpg"
+        }
       },
       "isActive": true,
-      "createdAt": "2025-01-15T10:30:00.000Z",
-      "updatedAt": "2025-01-15T10:30:00.000Z",
+      "createdAt": "2025-01-20T10:30:00.000Z",
+      "updatedAt": "2025-01-20T10:30:00.000Z",
       "distanceKm": 0.5,
       "minPricePerHour": 1500.00,
       "sports": [
@@ -208,18 +223,19 @@ GET /api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=1&limit=7
       "id": 2,
       "name": "Ace Padel",
       "description": "Modern padel facility",
-      "address": "456 Game Avenue, Karachi",
-      "city": "Karachi",
-      "latitude": 24.8650,
-      "longitude": 67.0050,
+      "address": "456 Game Avenue, Lahore",
+      "city": "Lahore",
+      "latitude": 31.5300,
+      "longitude": 74.3600,
       "contactPhone": "+923009876543",
       "contactEmail": "info@acepadel.com",
       "ownerId": 6,
-      "photos": [],
+      "amenities": ["parking", "wifi", "lighting"],
       "openingHours": {},
+      "coverImage": null,
       "isActive": true,
-      "createdAt": "2025-01-15T11:00:00.000Z",
-      "updatedAt": "2025-01-15T11:00:00.000Z",
+      "createdAt": "2025-01-20T11:00:00.000Z",
+      "updatedAt": "2025-01-20T11:00:00.000Z",
       "distanceKm": 1.2,
       "minPricePerHour": 2000.00,
       "sports": [
@@ -266,11 +282,12 @@ GET /api/v1/facilities/closest?latitude=24.8607&longitude=67.0011&page=1&limit=7
 }
 ```
 
-**Note:** 
+**Notes:** 
 - Results are ordered by distance (closest first)
 - `distanceKm` shows the distance in kilometers from the provided coordinates
 - Only active facilities with valid coordinates are included
-- The response includes `minPricePerHour` and `sports` information for each facility
+- The response includes `minPricePerHour`, `sports`, and `coverImage` for each facility
+- `coverImage` is null if no cover image has been uploaded
 - Maximum of 28 facilities total will be returned across all pages
 - Use the `page` parameter to get the next set of facilities
 
@@ -327,25 +344,53 @@ Get detailed information about a specific facility, including its courts and ava
     "id": 1,
     "name": "Elite Sports Center",
     "description": "Premium sports facility with multiple courts",
-    "address": "123 Sports Street, Karachi",
-    "city": "Karachi",
-    "latitude": 24.8607,
-    "longitude": 67.0011,
+    "address": "123 Sports Street, Lahore",
+    "city": "Lahore",
+    "latitude": 31.5204,
+    "longitude": 74.3587,
     "contactPhone": "+923001234567",
     "contactEmail": "info@elitesports.com",
     "ownerId": 5,
-    "photos": [
-      "https://example.com/photo1.jpg",
-      "https://example.com/photo2.jpg"
-    ],
+    "amenities": ["parking", "wifi", "restroom", "cafeteria", "lighting", "water", "seating", "pro_shop"],
     "openingHours": {
-      "monday": { "open": "09:00", "close": "22:00" },
-      "tuesday": { "open": "09:00", "close": "22:00" },
-      "sunday": null
+      "monday": { "open": "06:00", "close": "23:00" },
+      "tuesday": { "open": "06:00", "close": "23:00" },
+      "sunday": { "open": "08:00", "close": "22:00" }
     },
+    "coverImage": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "url": "https://cdn.example.com/facilities/1/cover.jpg",
+      "variants": {
+        "thumb": "https://cdn.example.com/facilities/1/thumb/cover.jpg",
+        "medium": "https://cdn.example.com/facilities/1/medium/cover.jpg",
+        "full": "https://cdn.example.com/facilities/1/full/cover.jpg"
+      }
+    },
+    "galleryImages": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440001",
+        "url": "https://cdn.example.com/facilities/1/gallery-1.jpg",
+        "variants": {
+          "thumb": "https://cdn.example.com/facilities/1/thumb/gallery-1.jpg",
+          "medium": "https://cdn.example.com/facilities/1/medium/gallery-1.jpg",
+          "full": "https://cdn.example.com/facilities/1/full/gallery-1.jpg"
+        },
+        "displayOrder": 0
+      },
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440002",
+        "url": "https://cdn.example.com/facilities/1/gallery-2.jpg",
+        "variants": {
+          "thumb": "https://cdn.example.com/facilities/1/thumb/gallery-2.jpg",
+          "medium": "https://cdn.example.com/facilities/1/medium/gallery-2.jpg",
+          "full": "https://cdn.example.com/facilities/1/full/gallery-2.jpg"
+        },
+        "displayOrder": 1
+      }
+    ],
     "isActive": true,
-    "createdAt": "2025-01-15T10:30:00.000Z",
-    "updatedAt": "2025-01-15T10:30:00.000Z",
+    "createdAt": "2025-01-20T10:30:00.000Z",
+    "updatedAt": "2025-01-20T10:30:00.000Z",
     "courts": [
       {
         "id": 1,
@@ -356,8 +401,8 @@ Get detailed information about a specific facility, including its courts and ava
         "pricePerHour": 1500.00,
         "isIndoor": true,
         "isActive": true,
-        "createdAt": "2025-01-15T10:35:00.000Z",
-        "updatedAt": "2025-01-15T10:35:00.000Z"
+        "createdAt": "2025-01-20T10:35:00.000Z",
+        "updatedAt": "2025-01-20T10:35:00.000Z"
       }
     ],
     "sports": [
@@ -371,6 +416,11 @@ Get detailed information about a specific facility, including its courts and ava
   }
 }
 ```
+
+**Notes:**
+- `coverImage` contains the facility's cover image (null if not uploaded)
+- `galleryImages` contains up to 10 gallery images sorted by display order
+- Each image includes `variants` with thumbnail, medium, and full-size URLs
 
 #### Error Responses
 

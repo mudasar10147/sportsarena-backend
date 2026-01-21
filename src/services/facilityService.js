@@ -7,9 +7,44 @@
 const Facility = require('../models/Facility');
 const FacilitySport = require('../models/FacilitySport');
 const Court = require('../models/Court');
+const Image = require('../models/Image');
 const availabilityService = require('./availabilityService');
 const availabilityFilterService = require('./availabilityFilterService');
 const timeNorm = require('../utils/timeNormalization');
+
+/**
+ * Get images for a facility (cover and gallery)
+ * @param {number} facilityId - Facility ID
+ * @returns {Promise<Object>} Object with coverImage and galleryImages
+ */
+const getFacilityImages = async (facilityId) => {
+  // Get all active images for the facility (both cover and gallery)
+  const images = await Image.findByEntity('facility', facilityId, {
+    activeOnly: true,
+    uploadStatus: 'uploaded' // Only include successfully uploaded images
+  });
+
+  // Separate cover and gallery images
+  const coverImage = images.find(img => img.imageType === 'cover') || null;
+  const galleryImages = images
+    .filter(img => img.imageType === 'gallery')
+    .sort((a, b) => a.displayOrder - b.displayOrder)
+    .slice(0, 10); // Max 10 gallery images
+
+  return {
+    coverImage: coverImage ? {
+      id: coverImage.id,
+      url: coverImage.publicUrl || coverImage.url,
+      variants: coverImage.variants
+    } : null,
+    galleryImages: galleryImages.map(img => ({
+      id: img.id,
+      url: img.publicUrl || img.url,
+      variants: img.variants,
+      displayOrder: img.displayOrder
+    }))
+  };
+};
 
 /**
  * Check if a court has availability for a specific time slot
@@ -183,8 +218,19 @@ const getAllFacilities = async (filters = {}) => {
     }
   }
 
+  // Fetch cover images for each facility in parallel
+  const facilitiesWithImages = await Promise.all(
+    facilities.map(async (facility) => {
+      const images = await getFacilityImages(facility.id);
+      return {
+        ...facility,
+        coverImage: images.coverImage
+      };
+    })
+  );
+
   return {
-    facilities,
+    facilities: facilitiesWithImages,
     total: result.total,
     limit,
     offset,
@@ -193,12 +239,12 @@ const getAllFacilities = async (filters = {}) => {
 };
 
 /**
- * Get facility details with related data (courts, sports)
+ * Get facility details with related data (courts, sports, images)
  * @param {number} facilityId - Facility ID
  * @param {Object} [locationParams] - Optional location parameters for distance calculation
  * @param {number} [locationParams.latitude] - Latitude for distance calculation
  * @param {number} [locationParams.longitude] - Longitude for distance calculation
- * @returns {Promise<Object>} Facility object with courts and sports
+ * @returns {Promise<Object>} Facility object with courts, sports, and images
  * @throws {Error} If facility not found
  */
 const getFacilityDetails = async (facilityId, locationParams = {}) => {
@@ -212,18 +258,17 @@ const getFacilityDetails = async (facilityId, locationParams = {}) => {
     throw error;
   }
 
-  // Get courts for this facility
-  const courts = await Court.findByFacilityId(facilityId, {
-    isActive: true
-  });
-
-  // Get sports for this facility
-  const sports = await FacilitySport.getSportsByFacility(facilityId, {
-    isActive: true
-  });
+  // Get courts, sports, and images in parallel for better performance
+  const [courts, sports, images] = await Promise.all([
+    Court.findByFacilityId(facilityId, { isActive: true }),
+    FacilitySport.getSportsByFacility(facilityId, { isActive: true }),
+    getFacilityImages(facilityId)
+  ]);
 
   return {
     ...facility,
+    coverImage: images.coverImage,
+    galleryImages: images.galleryImages,
     courts,
     sports: sports.map(s => ({
       id: s.sportId,
@@ -471,8 +516,19 @@ const getClosestFacilities = async (latitude, longitude, page = 1, limit = 7) =>
   // Apply pagination to get the requested page
   const paginatedFacilities = allFacilities.slice(offset, offset + limitNum);
 
+  // Fetch cover images for each facility in parallel
+  const facilitiesWithImages = await Promise.all(
+    paginatedFacilities.map(async (facility) => {
+      const images = await getFacilityImages(facility.id);
+      return {
+        ...facility,
+        coverImage: images.coverImage
+      };
+    })
+  );
+
   return {
-    facilities: paginatedFacilities,
+    facilities: facilitiesWithImages,
     total,
     page: pageNum,
     limit: limitNum,
@@ -485,6 +541,7 @@ const getClosestFacilities = async (latitude, longitude, page = 1, limit = 7) =>
 module.exports = {
   getAllFacilities,
   getFacilityDetails,
+  getFacilityImages,
   createFacility,
   updateFacility,
   getClosestFacilities,

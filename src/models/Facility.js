@@ -2,6 +2,33 @@ const { pool } = require('../config/database');
 
 class Facility {
   /**
+   * Valid amenities that can be assigned to a facility
+   */
+  static VALID_AMENITIES = [
+    'parking',
+    'wifi',
+    'restroom',
+    'cafeteria',
+    'lighting',
+    'water',
+    'seating',
+    'pro_shop',
+    'locker_room',
+    'shower',
+    'air_conditioning',
+    'first_aid',
+    'equipment_rental',
+    'coaching',
+    'spectator_area',
+    'wheelchair_accessible'
+  ];
+
+  /**
+   * Maximum number of amenities allowed per facility
+   */
+  static MAX_AMENITIES = 8;
+
+  /**
    * Create a new facility
    * @param {Object} facilityData - Facility data object
    * @param {string} facilityData.name - Facility name
@@ -13,8 +40,9 @@ class Facility {
    * @param {number} [facilityData.longitude] - Longitude coordinate
    * @param {string} [facilityData.contactPhone] - Contact phone number
    * @param {string} [facilityData.contactEmail] - Contact email
-   * @param {Array<string>} [facilityData.photos] - Array of photo URLs
+   * @param {Array<string>} [facilityData.photos] - Array of photo URLs (legacy, use images table)
    * @param {Object} [facilityData.openingHours] - Opening hours object by day
+   * @param {Array<string>} [facilityData.amenities] - Array of amenity strings (max 8)
    * @returns {Promise<Object>} Created facility object
    */
   static async create(facilityData) {
@@ -29,18 +57,19 @@ class Facility {
       contactPhone = null,
       contactEmail = null,
       photos = [],
-      openingHours = {}
+      openingHours = {},
+      amenities = []
     } = facilityData;
 
     const query = `
       INSERT INTO facilities (
         name, description, address, city, latitude, longitude,
-        contact_phone, contact_email, owner_id, photos, opening_hours
+        contact_phone, contact_email, owner_id, photos, opening_hours, amenities
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING id, name, description, address, city, latitude, longitude,
                 contact_phone, contact_email, owner_id, photos, opening_hours,
-                is_active, created_at, updated_at
+                amenities, is_active, created_at, updated_at
     `;
 
     const values = [
@@ -54,7 +83,8 @@ class Facility {
       contactEmail,
       ownerId,
       JSON.stringify(photos),
-      JSON.stringify(openingHours)
+      JSON.stringify(openingHours),
+      JSON.stringify(amenities)
     ];
 
     const result = await pool.query(query, values);
@@ -92,7 +122,7 @@ class Facility {
     const query = `
       SELECT id, name, description, address, city, latitude, longitude,
              contact_phone, contact_email, owner_id, photos, opening_hours,
-             is_active, created_at, updated_at
+             amenities, is_active, created_at, updated_at
              ${distanceSelect}
       FROM facilities
       WHERE id = $1
@@ -110,7 +140,7 @@ class Facility {
     const query = `
       SELECT id, name, description, address, city, latitude, longitude,
              contact_phone, contact_email, owner_id, photos, opening_hours,
-             is_active, created_at, updated_at
+             amenities, is_active, created_at, updated_at
       FROM facilities
       WHERE owner_id = $1
       ORDER BY created_at DESC
@@ -128,7 +158,7 @@ class Facility {
   static async update(facilityId, updateData) {
     const allowedFields = [
       'name', 'description', 'address', 'city', 'latitude', 'longitude',
-      'contact_phone', 'contact_email', 'photos', 'opening_hours', 'is_active'
+      'contact_phone', 'contact_email', 'photos', 'opening_hours', 'amenities', 'is_active'
     ];
     const updates = [];
     const values = [];
@@ -143,7 +173,7 @@ class Facility {
 
       if (allowedFields.includes(dbField) && value !== undefined) {
         // Handle JSON fields
-        if (dbField === 'photos' || dbField === 'opening_hours') {
+        if (dbField === 'photos' || dbField === 'opening_hours' || dbField === 'amenities') {
           updates.push(`${dbField} = $${paramCount}::jsonb`);
           values.push(JSON.stringify(value));
         } else {
@@ -168,7 +198,7 @@ class Facility {
       WHERE id = $${paramCount}
       RETURNING id, name, description, address, city, latitude, longitude,
                 contact_phone, contact_email, owner_id, photos, opening_hours,
-                is_active, created_at, updated_at
+                amenities, is_active, created_at, updated_at
     `;
 
     const result = await pool.query(query, values);
@@ -267,7 +297,7 @@ class Facility {
       SELECT 
         f.id, f.name, f.description, f.address, f.city, f.latitude, f.longitude,
         f.contact_phone, f.contact_email, f.owner_id, f.photos, f.opening_hours,
-        f.is_active, f.created_at, f.updated_at,
+        f.amenities, f.is_active, f.created_at, f.updated_at,
         ${minPriceSubquery} AS min_price_per_hour,
         ${sportsSubquery} AS sports
         ${distanceSelect}
@@ -396,7 +426,7 @@ class Facility {
     const query = `
       SELECT id, name, description, address, city, latitude, longitude,
              contact_phone, contact_email, owner_id, photos, opening_hours,
-             is_active, created_at, updated_at
+             amenities, is_active, created_at, updated_at
       FROM facilities
       WHERE is_active = $1
         AND (name ILIKE $2 OR address ILIKE $2 OR city ILIKE $2)
@@ -445,6 +475,7 @@ class Facility {
       ownerId: row.owner_id,
       photos: typeof row.photos === 'string' ? JSON.parse(row.photos) : (row.photos || []),
       openingHours: typeof row.opening_hours === 'string' ? JSON.parse(row.opening_hours) : (row.opening_hours || {}),
+      amenities: typeof row.amenities === 'string' ? JSON.parse(row.amenities) : (row.amenities || []),
       isActive: row.is_active,
       createdAt: row.created_at,
       updatedAt: row.updated_at

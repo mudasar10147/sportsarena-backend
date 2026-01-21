@@ -11,9 +11,11 @@ Complete guide for Facility API endpoints in SportsArena MVP.
 1. [Overview](#overview)
 2. [Authentication](#authentication)
 3. [Endpoints](#endpoints)
-4. [Request/Response Examples](#requestresponse-examples)
-5. [Error Handling](#error-handling)
-6. [Testing](#testing)
+4. [Amenities](#amenities)
+5. [Images](#images)
+6. [Request/Response Examples](#requestresponse-examples)
+7. [Error Handling](#error-handling)
+8. [Testing](#testing)
 
 ---
 
@@ -27,6 +29,8 @@ The Facility API handles facility listing, details retrieval, creation, and upda
 - **Filtering**: By city, sport, and location (radius-based search)
 - **Pagination**: For large result sets
 - **Protected Operations**: Creating and updating facilities require facility_admin role
+- **Amenities**: Support for up to 8 facility features (parking, wifi, etc.)
+- **Images**: Cover image + up to 10 gallery images via S3 upload
 
 ---
 
@@ -395,24 +399,21 @@ Create a new facility. Only users with `facility_admin` role can create faciliti
 {
   "name": "Elite Sports Center",
   "address": "Plot, next to DHA security office, Block M Phase 5 D.H.A, Lahore, 54000, Pakistan",
-  "description": "Premium padel sports facility featuring 3 state-of-the-art courts, a modern food court, and Bellinturf. Recently opened, with 1 black court and 2 blue courts, designed for an exceptional playing experience.",
-  "city": "Karachi",
-  "latitude": 24.8607,
-  "longitude": 67.0011,
+  "description": "Premium padel sports facility featuring 3 state-of-the-art courts, a modern food court, and Bellinturf.",
+  "city": "Lahore",
+  "latitude": 31.5204,
+  "longitude": 74.3587,
   "contactPhone": "+923357754999",
-  "contactEmail": "info@acepadel.com",
-  "photos": [
-    "https://example.com/photo1.jpg",
-    "https://example.com/photo2.jpg"
-  ],
+  "contactEmail": "info@elitesports.com",
+  "amenities": ["parking", "wifi", "restroom", "cafeteria", "lighting", "water", "seating", "pro_shop"],
   "openingHours": {
-    "monday": { "open": "09:00", "close": "22:00" },
-    "tuesday": { "open": "09:00", "close": "22:00" },
-    "wednesday": { "open": "09:00", "close": "22:00" },
-    "thursday": { "open": "09:00", "close": "22:00" },
-    "friday": { "open": "09:00", "close": "22:00" },
-    "saturday": { "open": "09:00", "close": "22:00" },
-    "sunday": null
+    "monday": { "open": "06:00", "close": "23:00" },
+    "tuesday": { "open": "06:00", "close": "23:00" },
+    "wednesday": { "open": "06:00", "close": "23:00" },
+    "thursday": { "open": "06:00", "close": "23:00" },
+    "friday": { "open": "06:00", "close": "23:00" },
+    "saturday": { "open": "08:00", "close": "22:00" },
+    "sunday": { "open": "08:00", "close": "22:00" }
   }
 }
 ```
@@ -428,8 +429,10 @@ Create a new facility. Only users with `facility_admin` role can create faciliti
 - `longitude` (number): Longitude coordinate (-180 to 180)
 - `contactPhone` (string): Contact phone number
 - `contactEmail` (string): Contact email
-- `photos` (array): Array of photo URLs (3-5 photos recommended)
+- `amenities` (array): Array of amenity strings (max 8) - see [Amenities](#amenities) section
 - `openingHours` (object): Opening hours by day
+
+**Note:** Images (cover and gallery) should be uploaded separately after facility creation using the Image Upload API. See [Images](#images) section.
 
 **Opening Hours Format:**
 ```json
@@ -450,23 +453,21 @@ Create a new facility. Only users with `facility_admin` role can create faciliti
     "id": 1,
     "name": "Elite Sports Center",
     "description": "Premium sports facility with multiple courts",
-    "address": "123 Sports Street, Karachi",
-    "city": "Karachi",
-    "latitude": 24.8607,
-    "longitude": 67.0011,
+    "address": "123 Sports Street, Lahore",
+    "city": "Lahore",
+    "latitude": 31.5204,
+    "longitude": 74.3587,
     "contactPhone": "+923001234567",
     "contactEmail": "info@elitesports.com",
     "ownerId": 5,
-    "photos": [
-      "https://example.com/photo1.jpg",
-      "https://example.com/photo2.jpg"
-    ],
+    "photos": [],
+    "amenities": ["parking", "wifi", "restroom", "cafeteria", "lighting", "water", "seating", "pro_shop"],
     "openingHours": {
-      "monday": { "open": "09:00", "close": "22:00" }
+      "monday": { "open": "06:00", "close": "23:00" }
     },
     "isActive": true,
-    "createdAt": "2025-01-15T10:30:00.000Z",
-    "updatedAt": "2025-01-15T10:30:00.000Z"
+    "createdAt": "2025-01-20T10:30:00.000Z",
+    "updatedAt": "2025-01-20T10:30:00.000Z"
   }
 }
 ```
@@ -478,6 +479,24 @@ Create a new facility. Only users with `facility_admin` role can create faciliti
 {
   "success": false,
   "message": "Name and address are required",
+  "error_code": "VALIDATION_ERROR"
+}
+```
+
+**400 Bad Request - Invalid Amenities**
+```json
+{
+  "success": false,
+  "message": "Invalid amenities: swimming_pool. Valid options: parking, wifi, restroom, cafeteria, lighting, water, seating, pro_shop, locker_room, shower, air_conditioning, first_aid, equipment_rental, coaching, spectator_area, wheelchair_accessible",
+  "error_code": "VALIDATION_ERROR"
+}
+```
+
+**400 Bad Request - Too Many Amenities**
+```json
+{
+  "success": false,
+  "message": "Maximum 8 amenities allowed",
   "error_code": "VALIDATION_ERROR"
 }
 ```
@@ -523,10 +542,7 @@ All fields are optional. Only include fields you want to update:
   "name": "Updated Facility Name",
   "description": "Updated description",
   "contactPhone": "+923009876543",
-  "photos": [
-    "https://example.com/new-photo1.jpg",
-    "https://example.com/new-photo2.jpg"
-  ],
+  "amenities": ["parking", "wifi", "restroom", "lighting"],
   "openingHours": {
     "monday": { "open": "10:00", "close": "23:00" }
   }
@@ -543,23 +559,21 @@ All fields are optional. Only include fields you want to update:
     "id": 1,
     "name": "Updated Facility Name",
     "description": "Updated description",
-    "address": "123 Sports Street, Karachi",
-    "city": "Karachi",
-    "latitude": 24.8607,
-    "longitude": 67.0011,
+    "address": "123 Sports Street, Lahore",
+    "city": "Lahore",
+    "latitude": 31.5204,
+    "longitude": 74.3587,
     "contactPhone": "+923009876543",
     "contactEmail": "info@elitesports.com",
     "ownerId": 5,
-    "photos": [
-      "https://example.com/new-photo1.jpg",
-      "https://example.com/new-photo2.jpg"
-    ],
+    "photos": [],
+    "amenities": ["parking", "wifi", "restroom", "lighting"],
     "openingHours": {
       "monday": { "open": "10:00", "close": "23:00" }
     },
     "isActive": true,
-    "createdAt": "2025-01-15T10:30:00.000Z",
-    "updatedAt": "2025-01-15T11:00:00.000Z"
+    "createdAt": "2025-01-20T10:30:00.000Z",
+    "updatedAt": "2025-01-20T11:00:00.000Z"
   }
 }
 ```
@@ -592,6 +606,122 @@ All fields are optional. Only include fields you want to update:
   "error_code": "FACILITY_NOT_FOUND"
 }
 ```
+
+---
+
+## Amenities
+
+Facilities can have up to **8 amenities** that describe available features and services.
+
+### Valid Amenities
+
+| Value | Description |
+|-------|-------------|
+| `parking` | Parking available |
+| `wifi` | WiFi connectivity |
+| `restroom` | Restroom facilities |
+| `cafeteria` | Food and beverage service |
+| `lighting` | Court/facility lighting |
+| `water` | Drinking water available |
+| `seating` | Seating area for spectators |
+| `pro_shop` | Pro shop for equipment |
+| `locker_room` | Locker room facilities |
+| `shower` | Shower facilities |
+| `air_conditioning` | Air conditioning |
+| `first_aid` | First aid available |
+| `equipment_rental` | Equipment rental service |
+| `coaching` | Coaching/training available |
+| `spectator_area` | Dedicated spectator area |
+| `wheelchair_accessible` | Wheelchair accessible |
+
+### Example
+
+```json
+{
+  "amenities": ["parking", "wifi", "restroom", "cafeteria", "lighting", "water", "seating", "pro_shop"]
+}
+```
+
+### Validation Rules
+
+- Maximum **8 amenities** per facility
+- Only valid amenity values accepted (see table above)
+- Duplicates are automatically removed
+
+---
+
+## Images
+
+Facility images are managed separately via the Image Upload API. Images are uploaded to S3 and served via CDN.
+
+### Image Types
+
+| Type | Limit | Description | Recommended Size |
+|------|-------|-------------|------------------|
+| `cover` | 1 | Cover image (Facebook-style, mobile optimized) | 1200x630px |
+| `gallery` | 10 | Gallery images | 1200x800px (3:2 ratio) |
+
+### Upload Cover Image
+
+```
+POST /api/v1/images/upload
+Content-Type: multipart/form-data
+
+Fields:
+- file: Image file (JPEG, PNG, WebP)
+- entityType: "facility"
+- entityId: <facility_id>
+- imageType: "cover"
+```
+
+### Upload Gallery Image
+
+```
+POST /api/v1/images/upload
+Content-Type: multipart/form-data
+
+Fields:
+- file: Image file (JPEG, PNG, WebP)
+- entityType: "facility"
+- entityId: <facility_id>
+- imageType: "gallery"
+```
+
+### Get Facility Images
+
+```
+GET /api/v1/images/entity/facility/:facilityId
+```
+
+### Delete Image
+
+```
+DELETE /api/v1/images/id/:imageId
+```
+
+### Example Response (Get Images)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid-1",
+      "imageType": "cover",
+      "url": "https://cdn.example.com/facilities/1/cover.jpg",
+      "isPrimary": true
+    },
+    {
+      "id": "uuid-2",
+      "imageType": "gallery",
+      "url": "https://cdn.example.com/facilities/1/gallery-1.jpg",
+      "isPrimary": false
+    }
+  ]
+}
+```
+
+**Note:** See [Image Upload API Guide](./Image/IMAGE_UPLOAD_API_GUIDE.md) for detailed documentation.
 
 ---
 
@@ -675,12 +805,12 @@ curl -X POST http://localhost:3000/api/v1/facilities \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Elite Sports Center",
-    "address": "123 Sports Street, Karachi",
-    "city": "Karachi",
-    "latitude": 24.8607,
-    "longitude": 67.0011,
+    "address": "123 Sports Street, Lahore",
+    "city": "Lahore",
+    "latitude": 31.5204,
+    "longitude": 74.3587,
     "contactPhone": "+923001234567",
-    "photos": ["https://example.com/photo1.jpg"]
+    "amenities": ["parking", "wifi", "restroom", "cafeteria", "lighting", "water"]
   }'
 ```
 
@@ -691,8 +821,34 @@ curl -X PUT http://localhost:3000/api/v1/facilities/1 \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Updated Facility Name",
-    "contactPhone": "+923009876543"
+    "contactPhone": "+923009876543",
+    "amenities": ["parking", "wifi", "restroom", "lighting"]
   }'
+```
+
+#### Upload Cover Image
+```bash
+curl -X POST http://localhost:3000/api/v1/images/upload \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "file=@/path/to/cover.jpg" \
+  -F "entityType=facility" \
+  -F "entityId=1" \
+  -F "imageType=cover"
+```
+
+#### Upload Gallery Image
+```bash
+curl -X POST http://localhost:3000/api/v1/images/upload \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "file=@/path/to/gallery1.jpg" \
+  -F "entityType=facility" \
+  -F "entityId=1" \
+  -F "imageType=gallery"
+```
+
+#### Get Facility Images
+```bash
+curl -X GET http://localhost:3000/api/v1/images/entity/facility/1
 ```
 
 ### Using Postman/Insomnia
@@ -706,14 +862,10 @@ curl -X PUT http://localhost:3000/api/v1/facilities/1 \
 
 ## Data Format Notes
 
-### Photos
-Array of URL strings (3-5 photos recommended for MVP):
+### Amenities
+Array of valid amenity strings (max 8):
 ```json
-[
-  "https://example.com/photo1.jpg",
-  "https://example.com/photo2.jpg",
-  "https://example.com/photo3.jpg"
-]
+["parking", "wifi", "restroom", "cafeteria", "lighting", "water", "seating", "pro_shop"]
 ```
 
 ### Opening Hours
@@ -744,7 +896,8 @@ Time format: `HH:MM` in 24-hour format.
 - Only active facilities are returned in listings (unless explicitly filtered)
 - Location-based search uses Haversine formula for distance calculation
 - Facility owner is automatically set to the authenticated user creating the facility
-- Photos are stored as URLs (not binary) for MVP simplicity
+- Images are uploaded via S3 and served via CDN (see [Images](#images) section)
+- Maximum 8 amenities per facility (see [Amenities](#amenities) section)
 - All timestamps are in ISO 8601 format (UTC)
 
 ---
@@ -755,8 +908,10 @@ Time format: `HH:MM` in 24-hour format.
 - [MVP Full Roadmap](./MVP_FULL_ROADMAP.md) - Complete MVP implementation plan
 - [Facility Model](../MODELS/Facility.md) - Database model documentation
 - [User API Guide](./USER_API_GUIDE.md) - User authentication endpoints
+- [Image Upload API Guide](./Image/IMAGE_UPLOAD_API_GUIDE.md) - Image upload documentation
+- [Facility Registration Guide](./Fronend%20Request/facility_registration_guide.md) - Frontend integration guide
 
 ---
 
-**Last Updated:** 2025-01-15
+**Last Updated:** 2025-01-20
 

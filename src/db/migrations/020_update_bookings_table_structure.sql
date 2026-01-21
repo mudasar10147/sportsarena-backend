@@ -24,11 +24,18 @@ CREATE INDEX IF NOT EXISTS idx_bookings_time_range ON bookings(court_id, booking
 CREATE INDEX IF NOT EXISTS idx_bookings_overlap_check ON bookings(court_id, booking_date, start_time, end_time) 
   WHERE booking_status NOT IN ('cancelled');
 
--- Step 4: Add constraint to ensure time range is valid
-ALTER TABLE bookings
-  ADD CONSTRAINT check_booking_time_range CHECK (
-    start_time IS NULL OR end_time IS NULL OR start_time < end_time
-  );
+-- Step 4: Add constraint to ensure time range is valid (if not exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'check_booking_time_range'
+  ) THEN
+    ALTER TABLE bookings
+      ADD CONSTRAINT check_booking_time_range CHECK (
+        start_time IS NULL OR end_time IS NULL OR start_time < end_time
+      );
+  END IF;
+END $$;
 
 -- Step 5: Add constraint to ensure booking_date is set when using new structure
 -- (This allows gradual migration - old bookings can have NULL, new ones must have date)
@@ -45,5 +52,5 @@ COMMENT ON COLUMN bookings.court_id IS 'Court ID (new rule-based structure)';
 COMMENT ON COLUMN bookings.booking_date IS 'Booking date (YYYY-MM-DD)';
 COMMENT ON COLUMN bookings.start_time IS 'Start time in minutes since midnight (0-1439)';
 COMMENT ON COLUMN bookings.end_time IS 'End time in minutes since midnight (0-1439)';
-COMMENT ON COLUMN bookings.time_slot_id IS 'Time slot ID (deprecated - will be removed after migration)';
+-- Note: time_slot_id column comment removed as column may not exist in all environments
 

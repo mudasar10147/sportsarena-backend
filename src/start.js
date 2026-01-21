@@ -42,7 +42,8 @@ const migrationFiles = [
   '024_add_payment_proof_to_bookings.sql',
   '026_create_email_verification_codes_table.sql',
   '027_add_signup_status_to_users.sql',
-  '028_add_username_to_email_verification_codes.sql'
+  '028_add_username_to_email_verification_codes.sql',
+  '029_add_facility_cover_and_amenities.sql'
 ];
 
 /**

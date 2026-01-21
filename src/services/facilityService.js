@@ -235,6 +235,40 @@ const getFacilityDetails = async (facilityId, locationParams = {}) => {
 };
 
 /**
+ * Validate amenities array
+ * @param {Array<string>} amenities - Array of amenity strings
+ * @returns {Object} Validation result with valid flag and sanitized amenities
+ * @throws {Error} If validation fails
+ */
+const validateAmenities = (amenities) => {
+  if (!amenities || !Array.isArray(amenities)) {
+    return { valid: true, amenities: [] };
+  }
+
+  // Check max limit
+  if (amenities.length > Facility.MAX_AMENITIES) {
+    const error = new Error(`Maximum ${Facility.MAX_AMENITIES} amenities allowed`);
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // Validate each amenity
+  const invalidAmenities = amenities.filter(a => !Facility.VALID_AMENITIES.includes(a));
+  if (invalidAmenities.length > 0) {
+    const error = new Error(`Invalid amenities: ${invalidAmenities.join(', ')}. Valid options: ${Facility.VALID_AMENITIES.join(', ')}`);
+    error.statusCode = 400;
+    error.errorCode = 'VALIDATION_ERROR';
+    throw error;
+  }
+
+  // Remove duplicates
+  const uniqueAmenities = [...new Set(amenities)];
+
+  return { valid: true, amenities: uniqueAmenities };
+};
+
+/**
  * Create a new facility
  * @param {Object} facilityData - Facility data
  * @param {number} ownerId - User ID of facility owner
@@ -252,7 +286,8 @@ const createFacility = async (facilityData, ownerId) => {
     contactPhone,
     contactEmail,
     photos,
-    openingHours
+    openingHours,
+    amenities
   } = facilityData;
 
   // Validation
@@ -262,6 +297,9 @@ const createFacility = async (facilityData, ownerId) => {
     error.errorCode = 'VALIDATION_ERROR';
     throw error;
   }
+
+  // Validate amenities
+  const amenitiesValidation = validateAmenities(amenities);
 
   // Create facility
   const facility = await Facility.create({
@@ -275,7 +313,8 @@ const createFacility = async (facilityData, ownerId) => {
     contactPhone,
     contactEmail,
     photos: photos || [],
-    openingHours: openingHours || {}
+    openingHours: openingHours || {},
+    amenities: amenitiesValidation.amenities
   });
 
   return facility;
@@ -306,6 +345,12 @@ const updateFacility = async (facilityId, updateData, userId) => {
     error.statusCode = 403;
     error.errorCode = 'FORBIDDEN';
     throw error;
+  }
+
+  // Validate amenities if provided
+  if (updateData.amenities !== undefined) {
+    const amenitiesValidation = validateAmenities(updateData.amenities);
+    updateData.amenities = amenitiesValidation.amenities;
   }
 
   // Update facility

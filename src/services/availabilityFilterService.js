@@ -331,18 +331,54 @@ function subtractRangesFromBlocks(blocks, ranges) {
  */
 
 /**
+ * Filter out past time slots for today's date
+ * Only returns slots that start at least 1 hour from now
+ * 
+ * @param {Array<Object>} blocks - Array of block objects with startTime
+ * @param {Date|string} date - The date being queried
+ * @param {number} [bufferMinutes=60] - Minimum minutes from now for a slot to be available (default: 60 = 1 hour)
+ * @returns {Array<Object>} Filtered blocks (only future slots)
+ */
+function filterPastTimeSlots(blocks, date, bufferMinutes = 60) {
+  const now = new Date();
+  const queryDate = date instanceof Date ? date : new Date(date);
+  
+  // Get just the date parts for comparison (YYYY-MM-DD)
+  const todayDateString = now.toISOString().split('T')[0];
+  const queryDateString = queryDate.toISOString().split('T')[0];
+  
+  // If the query date is not today, return all blocks (no past filtering needed)
+  if (queryDateString !== todayDateString) {
+    return blocks;
+  }
+  
+  // For today, calculate the minimum start time (current time + buffer)
+  // Convert current time to minutes since midnight
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const minimumStartTime = currentMinutes + bufferMinutes;
+  
+  // Filter out blocks that start before the minimum time
+  const futureBlocks = blocks.filter(block => block.startTime >= minimumStartTime);
+  
+  return futureBlocks;
+}
+
+/**
  * Filter base availability blocks by removing overlapping bookings and blocked ranges
  * 
  * This is a pure, deterministic function that:
  * 1. Fetches confirmed bookings for the court/date
  * 2. Fetches blocked time ranges for the court/date
  * 3. Subtracts overlapping ranges from base availability blocks
- * 4. Returns only truly free blocks
+ * 4. Filters out past time slots for today (with 1 hour buffer)
+ * 5. Returns only truly free blocks
  * 
  * @param {Object} baseAvailability - Base availability object from generateBaseAvailability
  * @param {Object} [options] - Optional configuration
  * @param {boolean} [options.includeBookings=true] - Whether to filter out bookings
  * @param {boolean} [options.includeBlocked=true] - Whether to filter out blocked ranges
+ * @param {boolean} [options.filterPastSlots=true] - Whether to filter out past time slots for today
+ * @param {number} [options.pastSlotBufferMinutes=60] - Buffer in minutes from now for slots to be available (default: 60 = 1 hour)
  * @returns {Promise<Object>} Filtered availability object with:
  *   - All properties from baseAvailability
  *   - blocks: Filtered blocks (only free time)
@@ -357,7 +393,9 @@ function subtractRangesFromBlocks(blocks, ranges) {
 async function filterAvailability(baseAvailability, options = {}) {
   const {
     includeBookings = true,
-    includeBlocked = true
+    includeBlocked = true,
+    filterPastSlots = true,
+    pastSlotBufferMinutes = 60
   } = options;
   
   const { courtId, date, blocks: baseBlocks } = baseAvailability;
@@ -390,7 +428,12 @@ async function filterAvailability(baseAvailability, options = {}) {
   ];
   
   // Apply pure time-range logic
-  const filteredBlocks = subtractRangesFromBlocks(baseBlocks, allRangesToSubtract);
+  let filteredBlocks = subtractRangesFromBlocks(baseBlocks, allRangesToSubtract);
+  
+  // Filter out past time slots for today (with buffer)
+  if (filterPastSlots) {
+    filteredBlocks = filterPastTimeSlots(filteredBlocks, date, pastSlotBufferMinutes);
+  }
   
   return {
     ...baseAvailability,
@@ -401,7 +444,9 @@ async function filterAvailability(baseAvailability, options = {}) {
       totalBaseBlocks: baseBlocks.length,
       totalFilteredBlocks: filteredBlocks.length,
       bookingsCount: bookings.length,
-      blockedRangesCount: blockedRanges.length
+      blockedRangesCount: blockedRanges.length,
+      pastSlotsFiltered: filterPastSlots,
+      pastSlotBufferMinutes: filterPastSlots ? pastSlotBufferMinutes : null
     }
   };
 }
@@ -412,6 +457,7 @@ module.exports = {
   doRangesOverlap,
   subtractRangeFromBlock,
   subtractRangesFromBlock,
-  subtractRangesFromBlocks
+  subtractRangesFromBlocks,
+  filterPastTimeSlots
 };
 

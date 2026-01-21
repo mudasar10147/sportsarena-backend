@@ -52,12 +52,12 @@ CREATE TABLE IF NOT EXISTS booking_policies (
     )
 );
 
--- Create indexes
-CREATE INDEX idx_booking_policies_facility ON booking_policies(facility_id);
-CREATE INDEX idx_booking_policies_court ON booking_policies(court_id);
-CREATE INDEX idx_booking_policies_active ON booking_policies(is_active);
-CREATE INDEX idx_booking_policies_facility_active ON booking_policies(facility_id, is_active);
-CREATE INDEX idx_booking_policies_court_active ON booking_policies(court_id, is_active);
+-- Create indexes (IF NOT EXISTS for idempotency)
+CREATE INDEX IF NOT EXISTS idx_booking_policies_facility ON booking_policies(facility_id);
+CREATE INDEX IF NOT EXISTS idx_booking_policies_court ON booking_policies(court_id);
+CREATE INDEX IF NOT EXISTS idx_booking_policies_active ON booking_policies(is_active);
+CREATE INDEX IF NOT EXISTS idx_booking_policies_facility_active ON booking_policies(facility_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_booking_policies_court_active ON booking_policies(court_id, is_active);
 
 -- Add comments
 COMMENT ON TABLE booking_policies IS 

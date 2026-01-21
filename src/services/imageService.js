@@ -38,8 +38,8 @@ const IMAGE_LIMITS = {
   },
   facility: {
     profile: 1,
-    cover: 1,
-    gallery: 20
+    cover: 1,        // Facebook-style cover image for mobile display
+    gallery: 10      // Max 10 gallery images (3:2 aspect ratio recommended)
   },
   court: {
     main: 1,

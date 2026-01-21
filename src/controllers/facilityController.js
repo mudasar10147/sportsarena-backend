@@ -142,6 +142,25 @@ const getFacilityDetails = async (req, res, next) => {
  * Create a new facility
  * POST /api/v1/facilities
  * Requires authentication and facility_admin role
+ * 
+ * Required fields:
+ * - name: Facility name
+ * - address: Full address
+ * 
+ * Optional fields:
+ * - description: Facility description
+ * - city: City name
+ * - latitude/longitude: Coordinates
+ * - contactPhone/contactEmail: Contact info
+ * - openingHours: Opening hours object
+ * - amenities: Array of amenities (max 8)
+ *   Valid values: parking, wifi, restroom, cafeteria, lighting, water, seating, 
+ *   pro_shop, locker_room, shower, air_conditioning, first_aid, equipment_rental,
+ *   coaching, spectator_area, wheelchair_accessible
+ * 
+ * Note: Images (cover, gallery) should be uploaded separately via the image upload API
+ * - Cover image: POST /api/v1/images/upload with entityType='facility', imageType='cover'
+ * - Gallery images: POST /api/v1/images/upload with entityType='facility', imageType='gallery' (max 10)
  */
 const createFacility = async (req, res, next) => {
   try {
@@ -156,7 +175,8 @@ const createFacility = async (req, res, next) => {
       contactPhone,
       contactEmail,
       photos,
-      openingHours
+      openingHours,
+      amenities
     } = req.body;
 
     // Validation
@@ -164,7 +184,7 @@ const createFacility = async (req, res, next) => {
       return sendValidationError(res, 'Name and address are required');
     }
 
-    // Validate photos array if provided
+    // Validate photos array if provided (legacy support)
     if (photos !== undefined && !Array.isArray(photos)) {
       return sendValidationError(res, 'Photos must be an array of URLs');
     }
@@ -172,6 +192,11 @@ const createFacility = async (req, res, next) => {
     // Validate opening hours object if provided
     if (openingHours !== undefined && typeof openingHours !== 'object') {
       return sendValidationError(res, 'Opening hours must be an object');
+    }
+
+    // Validate amenities array if provided
+    if (amenities !== undefined && !Array.isArray(amenities)) {
+      return sendValidationError(res, 'Amenities must be an array of strings');
     }
 
     // Validate coordinates if provided
@@ -194,7 +219,8 @@ const createFacility = async (req, res, next) => {
       contactPhone,
       contactEmail,
       photos,
-      openingHours
+      openingHours,
+      amenities
     }, userId);
 
     return sendCreated(res, facility, 'Facility created successfully');
@@ -228,6 +254,7 @@ const updateFacility = async (req, res, next) => {
       contactEmail,
       photos,
       openingHours,
+      amenities,
       isActive
     } = req.body;
 
@@ -262,6 +289,12 @@ const updateFacility = async (req, res, next) => {
         return sendValidationError(res, 'Opening hours must be an object');
       }
       updateData.openingHours = openingHours;
+    }
+    if (amenities !== undefined) {
+      if (!Array.isArray(amenities)) {
+        return sendValidationError(res, 'Amenities must be an array of strings');
+      }
+      updateData.amenities = amenities;
     }
     if (isActive !== undefined) {
       if (typeof isActive !== 'boolean') {

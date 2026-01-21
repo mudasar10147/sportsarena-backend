@@ -80,15 +80,15 @@ CREATE TABLE IF NOT EXISTS blocked_time_ranges (
     )
 );
 
--- Create indexes
-CREATE INDEX idx_blocked_ranges_facility ON blocked_time_ranges(facility_id);
-CREATE INDEX idx_blocked_ranges_court ON blocked_time_ranges(court_id);
-CREATE INDEX idx_blocked_ranges_type ON blocked_time_ranges(block_type);
-CREATE INDEX idx_blocked_ranges_active ON blocked_time_ranges(is_active);
-CREATE INDEX idx_blocked_ranges_dates ON blocked_time_ranges(start_date, end_date);
-CREATE INDEX idx_blocked_ranges_day ON blocked_time_ranges(day_of_week);
-CREATE INDEX idx_blocked_ranges_time ON blocked_time_ranges(start_time, end_time);
-CREATE INDEX idx_blocked_ranges_court_dates ON blocked_time_ranges(court_id, start_date, end_date);
+-- Create indexes (IF NOT EXISTS for idempotency)
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_facility ON blocked_time_ranges(facility_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_court ON blocked_time_ranges(court_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_type ON blocked_time_ranges(block_type);
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_active ON blocked_time_ranges(is_active);
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_dates ON blocked_time_ranges(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_day ON blocked_time_ranges(day_of_week);
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_time ON blocked_time_ranges(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_blocked_ranges_court_dates ON blocked_time_ranges(court_id, start_date, end_date);
 
 -- Add comments
 COMMENT ON TABLE blocked_time_ranges IS 

@@ -438,9 +438,15 @@ class User {
   }
 
   /**
-   * Delete user (hard delete - permanent deletion for testing)
-   * WARNING: This permanently removes the user record and all related data from the database
-   * Deletes: bookings, images (created by user), then user record
+   * Delete user (soft delete - sets is_active to false)
+   * Also deactivates related entities for facility admins
+   * 
+   * Soft delete behavior:
+   * 1. Sets user is_active = FALSE
+   * 2. For facility admins: sets their facilities is_active = FALSE
+   * 3. For facility admins: sets courts in their facilities is_active = FALSE
+   * 4. All data is preserved (bookings, images, availability rules, etc.)
+   * 
    * @param {number} userId - User ID
    * @returns {Promise<boolean>} True if deleted successfully
    */
@@ -450,20 +456,44 @@ class User {
     try {
       await client.query('BEGIN');
       
-      // Delete user's bookings first (foreign key constraint)
-      await client.query('DELETE FROM bookings WHERE user_id = $1', [userId]);
-      
-      // Delete images created by user (foreign key constraint)
-      await client.query('DELETE FROM images WHERE created_by = $1', [userId]);
-      
-      // Delete email verification codes for user's email
-      const userResult = await client.query('SELECT email FROM users WHERE id = $1', [userId]);
-      if (userResult.rows.length > 0) {
-        await client.query('DELETE FROM email_verification_codes WHERE email = $1', [userResult.rows[0].email]);
+      // Get user info (role)
+      const userResult = await client.query('SELECT role FROM users WHERE id = $1', [userId]);
+      if (userResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return false;
       }
       
-      // Now delete the user
-      const result = await client.query('DELETE FROM users WHERE id = $1', [userId]);
+      const { role } = userResult.rows[0];
+      
+      // If user is a facility_admin, deactivate their facilities and courts
+      if (role === 'facility_admin') {
+        // Get all facility IDs owned by this user
+        const facilitiesResult = await client.query('SELECT id FROM facilities WHERE owner_id = $1', [userId]);
+        const facilityIds = facilitiesResult.rows.map(row => row.id);
+        
+        if (facilityIds.length > 0) {
+          // Deactivate all courts in these facilities
+          await client.query(`
+            UPDATE courts 
+            SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+            WHERE facility_id = ANY($1)
+          `, [facilityIds]);
+          
+          // Deactivate all facilities owned by this user
+          await client.query(`
+            UPDATE facilities 
+            SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+            WHERE owner_id = $1
+          `, [userId]);
+        }
+      }
+      
+      // Soft delete the user (set is_active to false)
+      const result = await client.query(`
+        UPDATE users 
+        SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `, [userId]);
       
       await client.query('COMMIT');
       return result.rowCount > 0;
